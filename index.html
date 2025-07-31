@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medical AI Chat Widget - Test Page</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 20px 0;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.1);
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        .hero {
+            text-align: center;
+            padding: 60px 20px;
+            color: white;
+        }
+        
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        
+        .hero p {
+            font-size: 1.2rem;
+            margin-bottom: 30px;
+            opacity: 0.9;
+        }
+        
+        .content {
+            background: white;
+            margin: 40px 20px;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            max-width: 1200px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .widget-demo {
+            background: #f8fafc;
+            border: 2px dashed #e2e8f0;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            margin: 30px 0;
+        }
+        
+        .demo-text {
+            color: #64748b;
+            font-size: 1.1rem;
+            margin-bottom: 20px;
+        }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin: 40px 0;
+        }
+        
+        .feature {
+            background: #f8fafc;
+            padding: 30px;
+            border-radius: 12px;
+            border-left: 4px solid #3b82f6;
+        }
+        
+        .feature h3 {
+            font-size: 1.3rem;
+            margin-bottom: 15px;
+            color: #1e293b;
+        }
+        
+        .feature p {
+            color: #64748b;
+            line-height: 1.6;
+        }
+        
+        .embed-section {
+            background: #1e293b;
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            margin: 30px 0;
+        }
+        
+        .embed-section h3 {
+            margin-bottom: 15px;
+            color: #f1f5f9;
+        }
+        
+        .code-block {
+            background: #0f172a;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 15px 0;
+            border: 1px solid #334155;
+        }
+        
+        .code-block code {
+            color: #10b981;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+        
+        .copy-btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background 0.2s;
+        }
+        
+        .copy-btn:hover {
+            background: #2563eb;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin: 10px 0;
+        }
+        
+        .status-online {
+            background: #dcfce7;
+            color: #166534;
+        }
+        
+        .status-testing {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+            
+            .content {
+                margin: 20px 10px;
+                padding: 25px;
+            }
+            
+            .feature-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <h2 style="text-align: center; color: #1e293b;">🏥 Medical AI Chat Widget Demo</h2>
+        </div>
+    </div>
+
+    <div class="hero">
+        <h1>Medical AI Assistant</h1>
+        <p>Experience our intelligent healthcare chatbot that provides medical information and guidance</p>
+        <div class="status-indicator status-online">🟢 Widget Active</div>
+        <div class="status-indicator status-testing">🧪 Test Environment</div>
+    </div>
+
+    <div class="content">
+        <h2 style="margin-bottom: 20px;">🤖 Interactive Chat Widget</h2>
+        <p style="margin-bottom: 30px; color: #64748b; font-size: 1.1rem;">
+            The chat widget is now active on this page! Look for the blue chat button in the bottom-right corner.
+            Click it to start a conversation with our Medical AI Assistant.
+        </p>
+
+        <div class="widget-demo">
+            <div class="demo-text">
+                👀 Look for the floating chat button in the bottom-right corner of this page
+            </div>
+            <div style="font-size: 2rem; margin: 20px 0;">💬</div>
+            <p style="color: #64748b;">
+                The widget is fully functional and connected to our AI backend.
+                Try asking questions about health, symptoms, or medical advice!
+            </p>
+        </div>
+
+        <div class="feature-grid">
+            <div class="feature">
+                <h3>🎯 Smart Routing</h3>
+                <p>Our AI automatically routes your questions to the most appropriate agent - whether that's medical knowledge, web search, or general health guidance.</p>
+            </div>
+            
+            <div class="feature">
+                <h3>🔒 Safe & Secure</h3>
+                <p>All conversations are processed securely with built-in safety checks to ensure appropriate medical guidance and user privacy.</p>
+            </div>
+            
+            <div class="feature">
+                <h3>📱 Responsive Design</h3>
+                <p>The widget adapts perfectly to any screen size - desktop, tablet, or mobile. Your users get a consistent experience everywhere.</p>
+            </div>
+            
+            <div class="feature">
+                <h3>⚡ Real-time</h3>
+                <p>Instant responses powered by advanced AI models including Groq, with real-time web search capabilities for the latest medical information.</p>
+            </div>
+        </div>
+
+        <div class="embed-section">
+            <h3>📋 Embed This Widget on Your Website</h3>
+            <p style="margin-bottom: 20px; opacity: 0.9;">
+                Copy and paste this single line of code to add the Medical AI widget to any website:
+            </p>
+            
+            <div class="code-block">
+                <code id="embedCode">&lt;script src="https://your-domain.vercel.app/medical-ai-widget.js"&gt;&lt;/script&gt;</code>
+            </div>
+            
+            <button class="copy-btn" onclick="copyEmbedCode()">📋 Copy Embed Code</button>
+            
+            <h4 style="margin: 25px 0 15px 0;">Advanced Configuration:</h4>
+            <div class="code-block">
+                <code>&lt;script&gt;
+// Optional: Configure widget before loading
+window.MedicalAIWidgetConfig = {
+    theme: 'blue',        // blue, green, purple, dark
+    position: 'bottom-right', // bottom-right, bottom-left, top-right, top-left
+    greeting: 'Hi! How can I help with your health questions?',
+    autoOpen: false,      // Auto-open after delay
+    autoOpenDelay: 3000   // Delay in milliseconds
+};
+&lt;/script&gt;
+&lt;script src="https://your-domain.vercel.app/medical-ai-widget.js"&gt;&lt;/script&gt;</code>
+            </div>
+        </div>
+
+        <div style="background: #eff6ff; padding: 30px; border-radius: 12px; border-left: 4px solid #3b82f6; margin: 30px 0;">
+            <h3 style="color: #1e40af; margin-bottom: 15px;">🏥 Medical Disclaimer</h3>
+            <p style="color: #1e40af;">
+                This AI assistant provides general health information and should not replace professional medical advice, diagnosis, or treatment. 
+                Always consult with qualified healthcare providers for specific medical concerns.
+            </p>
+        </div>
+
+        <div style="text-align: center; margin: 40px 0; padding: 20px;">
+            <h3 style="margin-bottom: 15px;">🔗 Integration Ready</h3>
+            <p style="color: #64748b; margin-bottom: 20px;">
+                This widget is production-ready and can be embedded on:
+            </p>
+            <div style="display: flex; justify-content: center; gap: 20px; flex-wrap: wrap;">
+                <span style="background: #f1f5f9; padding: 8px 16px; border-radius: 20px; color: #475569;">🌐 WordPress</span>
+                <span style="background: #f1f5f9; padding: 8px 16px; border-radius: 20px; color: #475569;">🔷 Shopify</span>
+                <span style="background: #f1f5f9; padding: 8px 16px; border-radius: 20px; color: #475569;">⚛️ React</span>
+                <span style="background: #f1f5f9; padding: 8px 16px; border-radius: 20px; color: #475569;">📄 HTML Sites</span>
+                <span style="background: #f1f5f9; padding: 8px 16px; border-radius: 20px; color: #475569;">🅰️ Angular</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load the Medical AI Widget -->
+    <script>
+        // Configure the widget
+        window.MedicalAIWidgetConfig = {
+            apiUrl: 'https://medical-ai-chatbot-backend.onrender.com',
+            theme: 'blue',
+            position: 'bottom-right',
+            greeting: 'Hello! I\'m your Medical AI Assistant. How can I help you today?',
+            title: 'Medical AI Assistant',
+            placeholder: 'Ask me about your health...',
+            autoOpen: false
+        };
+
+        function copyEmbedCode() {
+            const code = document.getElementById('embedCode').textContent;
+            navigator.clipboard.writeText(code).then(function() {
+                alert('📋 Embed code copied to clipboard!');
+            }, function() {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = code;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert('📋 Embed code copied to clipboard!');
+            });
+        }
+
+        // Add some interactive functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add a subtle animation to the hero
+            const hero = document.querySelector('.hero');
+            hero.style.opacity = '0';
+            hero.style.transform = 'translateY(20px)';
+            hero.style.transition = 'all 0.8s ease';
+            
+            setTimeout(() => {
+                hero.style.opacity = '1';
+                hero.style.transform = 'translateY(0)';
+            }, 200);
+
+            // Add loading indicator for widget
+            setTimeout(() => {
+                console.log('🤖 Medical AI Widget loaded successfully!');
+                
+                // Show a subtle notification that the widget is ready
+                const notification = document.createElement('div');
+                notification.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: #10b981;
+                    color: white;
+                    padding: 12px 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    font-size: 14px;
+                    z-index: 9999;
+                    opacity: 0;
+                    transform: translateY(-20px);
+                    transition: all 0.3s ease;
+                `;
+                notification.textContent = '✅ Chat Widget Ready!';
+                document.body.appendChild(notification);
+
+                setTimeout(() => {
+                    notification.style.opacity = '1';
+                    notification.style.transform = 'translateY(0)';
+                }, 100);
+
+                setTimeout(() => {
+                    notification.style.opacity = '0';
+                    notification.style.transform = 'translateY(-20px)';
+                    setTimeout(() => document.body.removeChild(notification), 300);
+                }, 3000);
+            }, 1000);
+        });
+    </script>
+
+    <!-- Load the actual widget script -->
+    <script src="frontend/public/medical-ai-widget.js"></script>
+</body>
+</html>
