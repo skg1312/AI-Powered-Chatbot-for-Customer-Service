@@ -28,6 +28,10 @@ JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', secrets.token_urlsafe(32))
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
+# CORS Configuration
+ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', '*').split(',') if os.getenv('ALLOWED_ORIGINS') != '*' else ["*"]
+print(f"🌐 CORS Origins: {ALLOWED_ORIGINS}")
+
 # Security
 security = HTTPBearer()
 
@@ -68,19 +72,7 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000", 
-        "http://127.0.0.1:3000",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-        "http://localhost:8080",
-        "http://127.0.0.1:8080",
-        "https://*.vercel.app",
-        "https://medical-ai-chatbot.vercel.app",
-        "https://medical-ai-chatbot-frontend.vercel.app",
-        "https://skg1312.github.io/AI-Powered-Chatbot-for-Customer-Service/"
-        "null"  # Allow file:// protocol for local testing
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1531,6 +1523,31 @@ async def update_session(session_id: str, update_data: dict):
     except Exception as e:
         logger.error(f"Error updating session: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to update session: {str(e)}")
+
+# CORS Management Endpoints (for enterprise users)
+@app.get("/api/cors/origins")
+async def get_allowed_origins():
+    """Get currently allowed CORS origins"""
+    return {"allowed_origins": ALLOWED_ORIGINS}
+
+@app.post("/api/cors/test")
+async def test_cors_origin(request: Dict[str, Any]):
+    """Test if an origin is allowed for CORS"""
+    origin = request.get("origin", "")
+    if not origin:
+        raise HTTPException(status_code=400, detail="Origin is required")
+    
+    is_allowed = (
+        "*" in ALLOWED_ORIGINS or 
+        origin in ALLOWED_ORIGINS or
+        any(origin.endswith(allowed.replace("*", "")) for allowed in ALLOWED_ORIGINS if "*" in allowed)
+    )
+    
+    return {
+        "origin": origin,
+        "allowed": is_allowed,
+        "message": "Origin is allowed" if is_allowed else "Origin is not in CORS whitelist"
+    }
 
 if __name__ == "__main__":
     import uvicorn
