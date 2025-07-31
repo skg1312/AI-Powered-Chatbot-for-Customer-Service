@@ -171,21 +171,6 @@ export default function AdminLogin() {
               )}
             </button>
           </form>
-
-          <div className="mt-6 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-            <h4 className="text-sm font-medium text-yellow-800 mb-2">Demo Credentials:</h4>
-            <p className="text-sm text-yellow-700">
-              <strong>Username:</strong> admin<br />
-              <strong>Password:</strong> admin123
-            </p>
-          </div>
-
-          <div className="mt-4 p-4 bg-red-50 rounded-lg border border-red-200">
-            <p className="text-sm text-red-700">
-              <strong>Security Notice:</strong> This is a demo implementation. 
-              In production, use proper authentication with encrypted passwords and secure sessions.
-            </p>
-          </div>
         </div>
       </div>
     </div>
