@@ -78,6 +78,7 @@ app.add_middleware(
         "https://*.vercel.app",
         "https://medical-ai-chatbot.vercel.app",
         "https://medical-ai-chatbot-frontend.vercel.app",
+        "https://skg1312.github.io/AI-Powered-Chatbot-for-Customer-Service/"
         "null"  # Allow file:// protocol for local testing
     ],
     allow_credentials=True,

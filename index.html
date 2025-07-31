@@ -378,6 +378,40 @@ window.MedicalAIWidgetConfig = {
     </script>
 
     <!-- Load the actual widget script -->
-    <script src="frontend/public/medical-ai-widget.js"></script>
+    <script src="medical-ai-widget.js" onerror="console.error('Failed to load widget script')"></script>
+    
+    <!-- Verify widget loaded -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof MedicalAIWidget === 'undefined') {
+                console.error('❌ Medical AI Widget failed to load');
+                
+                // Show error notification
+                const errorNotification = document.createElement('div');
+                errorNotification.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: #dc2626;
+                    color: white;
+                    padding: 12px 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    font-size: 14px;
+                    z-index: 9999;
+                `;
+                errorNotification.textContent = '❌ Widget script failed to load';
+                document.body.appendChild(errorNotification);
+                
+                setTimeout(() => {
+                    if (errorNotification.parentNode) {
+                        document.body.removeChild(errorNotification);
+                    }
+                }, 5000);
+            } else {
+                console.log('✅ Medical AI Widget loaded successfully');
+            }
+        });
+    </script>
 </body>
 </html>
