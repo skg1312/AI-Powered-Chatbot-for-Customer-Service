@@ -35,12 +35,13 @@ export default function Auth() {
     setSuccess('');
 
     try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       const endpoint = isLogin ? '/api/users/login' : '/api/users/register';
       const payload = isLogin 
         ? { email: formData.email, password: formData.password }
         : formData;
 
-      const response = await fetch(`http://localhost:8000${endpoint}`, {
+      const response = await fetch(`${API_URL}${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
