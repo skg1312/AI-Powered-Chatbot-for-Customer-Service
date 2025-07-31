@@ -71,7 +71,7 @@ class WebSearchAgent:
             if not search_results.get("results"):
                 return {
                     "context": "No current web information found for this query.",
-                    "sources": [],
+                    "sources": {"type": "web_search", "description": "No relevant web results found"},
                     "success": True,
                     "message": "No relevant web results found",
                     "query": query
@@ -79,7 +79,7 @@ class WebSearchAgent:
             
             # Process and format results
             context_parts = []
-            sources = []
+            source_list = []
             
             for result in search_results["results"][:max_results]:
                 title = result.get("title", "")
@@ -91,7 +91,7 @@ class WebSearchAgent:
                     formatted_content = f"**{title}**\n{content}"
                     context_parts.append(formatted_content)
                     
-                    sources.append({
+                    source_list.append({
                         "title": title,
                         "url": url,
                         "content": content[:300] + "..." if len(content) > 300 else content
@@ -100,13 +100,17 @@ class WebSearchAgent:
             # Combine all context
             combined_context = "\n\n".join(context_parts)
             
-            print(f"🌐 Found {len(sources)} web sources for query: {query[:50]}...")
+            print(f"🌐 Found {len(source_list)} web sources for query: {query[:50]}...")
             
             return {
                 "context": combined_context,
-                "sources": sources,
+                "sources": {
+                    "type": "web_search",
+                    "count": len(source_list),
+                    "results": source_list
+                },
                 "success": True,
-                "message": f"Found {len(sources)} current web sources",
+                "message": f"Found {len(source_list)} current web sources",
                 "query": query
             }
             
@@ -151,13 +155,13 @@ class WebSearchAgent:
             if not search_results.get("results"):
                 return {
                     "context": "No information found on the specified medical websites.",
-                    "sources": [],
+                    "sources": {"type": "curated_search", "description": "No results from curated sites"},
                     "success": True,
                     "message": "No results from curated sites"
                 }
             
             context_parts = []
-            sources = []
+            source_list = []
             
             for result in search_results["results"]:
                 title = result.get("title", "")
@@ -168,7 +172,7 @@ class WebSearchAgent:
                     formatted_content = f"**{title}** (from {url})\n{content}"
                     context_parts.append(formatted_content)
                     
-                    sources.append({
+                    source_list.append({
                         "title": title,
                         "url": url,
                         "content": content,
@@ -179,16 +183,20 @@ class WebSearchAgent:
             
             return {
                 "context": combined_context,
-                "sources": sources,
+                "sources": {
+                    "type": "curated_search",
+                    "count": len(source_list),
+                    "results": source_list
+                },
                 "success": True,
-                "message": f"Found {len(sources)} results from curated sites"
+                "message": f"Found {len(source_list)} results from curated sites"
             }
             
         except Exception as e:
             print(f"❌ Error in curated site search: {str(e)}")
             return {
                 "context": "Error searching curated medical websites.",
-                "sources": [],
+                "sources": {"type": "error", "description": f"Curated search error: {str(e)}"},
                 "success": False,
                 "message": f"Curated search error: {str(e)}"
             }

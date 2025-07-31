@@ -217,7 +217,7 @@ class RAGAgent:
             if not relevant_docs:
                 return {
                     "context": "No specific information found in knowledge base. Providing general medical knowledge.",
-                    "sources": [],
+                    "sources": {"type": "general", "description": "No relevant documents found"},
                     "success": True,
                     "message": "Using general medical knowledge",
                     "query": query
@@ -225,7 +225,7 @@ class RAGAgent:
             
             # Combine relevant documents into context
             context_parts = []
-            sources = []
+            source_list = []
             current_length = 0
             
             for doc in relevant_docs:
@@ -234,7 +234,7 @@ class RAGAgent:
                     break
                 
                 context_parts.append(doc_text)
-                sources.append({
+                source_list.append({
                     "text": doc_text[:200] + "..." if len(doc_text) > 200 else doc_text,
                     "score": doc["score"],
                     "metadata": doc["metadata"]
@@ -246,9 +246,13 @@ class RAGAgent:
             
             return {
                 "context": combined_context,
-                "sources": sources,
+                "sources": {
+                    "type": "knowledge_base",
+                    "count": len(source_list),
+                    "documents": source_list
+                },
                 "success": True,
-                "message": f"Found {len(sources)} relevant documents",
+                "message": f"Found {len(source_list)} relevant documents",
                 "query": query
             }
             
@@ -257,7 +261,7 @@ class RAGAgent:
             # Provide a helpful fallback response when knowledge base is not available
             return {
                 "context": "Knowledge base temporarily unavailable. Providing general medical information.",
-                "sources": [],
+                "sources": {"type": "error", "description": "Knowledge base connection failed"},
                 "success": False,
                 "message": "Using general medical knowledge - knowledge base connection failed"
             }

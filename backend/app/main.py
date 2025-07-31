@@ -246,20 +246,20 @@ async def chat_endpoint(project_id: str, request: ChatRequest):
         
         # Step 2: Execute the chosen agent to get context
         context = ""
-        sources = []
+        sources = {}
         
         if agent_decision == "RAG_Agent":
             rag_result = rag_agent.execute_rag_search(query)
             context = rag_result.get("context", "")
-            sources = rag_result.get("sources", [])
+            sources = rag_result.get("sources", {})
         elif agent_decision == "WebSearch_Agent":
             web_result = web_search_agent.search_web(query)
             context = web_result.get("context", "")
-            sources = web_result.get("sources", [])
+            sources = web_result.get("sources", {})
         else:
             # General medical knowledge
             context = "Providing general medical knowledge based on training data."
-            sources = []
+            sources = {"type": "general", "description": "General medical knowledge from training data"}
         
         # Step 3: Generate final response
         final_response = generate_final_response(query, context, agent_decision, project_id)
