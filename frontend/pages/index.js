@@ -8,7 +8,9 @@ import {
   Bot,
   Users,
   Database,
-  Globe
+  Globe,
+  History,
+  User
 } from 'lucide-react';
 
 export default function Home() {
@@ -21,26 +23,55 @@ export default function Home() {
     activeAgents: 4
   });
 
-  useEffect(() => {
-    // Load stats from API
-    loadStats();
-  }, []);
-
   const loadStats = async () => {
     try {
-      const response = await fetch('/api/projects/main/config');
+      const response = await fetch('http://localhost:8000/api/projects/main/stats');
       if (response.ok) {
         const data = await response.json();
-        setStats(prev => ({
-          ...prev,
-          knowledgeBaseFiles: data.knowledge_base_files?.length || 0,
-          curatedWebsites: data.curated_sites?.length || 4
-        }));
+        console.log('Stats loaded:', data); // Debug log
+        setStats({
+          totalUsers: data.total_users || 0,
+          totalSessions: data.total_sessions || 0,
+          knowledgeBaseFiles: data.knowledge_base_files || 0,
+          curatedWebsites: data.curated_websites || 0,
+          activeAgents: data.active_agents || 4
+        });
       }
     } catch (error) {
       console.error('Failed to load stats:', error);
     }
   };
+
+  useEffect(() => {
+    // Load stats from API
+    loadStats();
+    
+    // Reload stats when the page becomes visible (e.g., returning from admin panel)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        loadStats();
+      }
+    };
+    
+    // Listen for messages from admin panel
+    const handleMessage = (event) => {
+      if (event.data === 'configUpdated') {
+        loadStats();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('message', handleMessage);
+    
+    // Also reload every 30 seconds for real-time updates
+    const interval = setInterval(loadStats, 30000);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('message', handleMessage);
+      clearInterval(interval);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -166,35 +197,42 @@ export default function Home() {
         </div>
 
         {/* Action Buttons */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <button
-            onClick={() => router.push('/playground')}
+            onClick={() => router.push('/register')}
+            className="bg-green-600 hover:bg-green-700 text-white rounded-xl p-8 text-center transition-colors group"
+          >
+            <User className="h-12 w-12 mx-auto mb-4 group-hover:scale-110 transition-transform" />
+            <h3 className="text-xl font-bold mb-2">New User</h3>
+            <p className="text-green-100">Register to access medical AI assistant</p>
+          </button>
+
+          <button
+            onClick={() => router.push('/login')}
             className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl p-8 text-center transition-colors group"
           >
             <MessageCircle className="h-12 w-12 mx-auto mb-4 group-hover:scale-110 transition-transform" />
-            <h3 className="text-xl font-bold mb-2">Chat Playground</h3>
-            <p className="text-blue-100">Test your AI assistant with real-time conversations</p>
+            <h3 className="text-xl font-bold mb-2">User Login</h3>
+            <p className="text-blue-100">Sign in to continue your medical chats</p>
           </button>
 
           <button
-            onClick={() => router.push('/admin')}
-            className="bg-gray-600 hover:bg-gray-700 text-white rounded-xl p-8 text-center transition-colors group"
+            onClick={() => router.push('/admin-login')}
+            className="bg-red-600 hover:bg-red-700 text-white rounded-xl p-8 text-center transition-colors group"
           >
             <Settings className="h-12 w-12 mx-auto mb-4 group-hover:scale-110 transition-transform" />
-            <h3 className="text-xl font-bold mb-2">Admin Panel</h3>
-            <p className="text-gray-100">Configure bot personality and knowledge base</p>
+            <h3 className="text-xl font-bold mb-2">Admin Login</h3>
+            <p className="text-red-100">Access admin panel and user management</p>
           </button>
 
-          <a
-            href="http://localhost:8000/docs"
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={() => router.push('/chat-history')}
             className="bg-purple-600 hover:bg-purple-700 text-white rounded-xl p-8 text-center transition-colors group"
           >
-            <FileText className="h-12 w-12 mx-auto mb-4 group-hover:scale-110 transition-transform" />
-            <h3 className="text-xl font-bold mb-2">API Documentation</h3>
-            <p className="text-purple-100">Explore the API endpoints and integration guides</p>
-          </a>
+            <History className="h-12 w-12 mx-auto mb-4 group-hover:scale-110 transition-transform" />
+            <h3 className="text-xl font-bold mb-2">Chat History</h3>
+            <p className="text-purple-100">View public conversation sessions</p>
+          </button>
         </div>
       </main>
     </div>

@@ -37,16 +37,13 @@ class RouterAgent:
 Query: "{query}"
 
 Available agents:
-1. RAG_Agent - For questions about medical conditions, symptoms, treatments, general health information
-2. WebSearch_Agent - For current medical news, latest research, drug recalls, recent health updates
-3. Appointment_Agent - For scheduling, booking, or managing medical appointments
-4. Logistics_Agent - For hospital/clinic information, directions, hours, contact details
+1. RAG_Agent - For questions about medical conditions, symptoms, treatments, general health information, appointment-related queries, and facility information
+2. WebSearch_Agent - For current medical news, latest research, drug recalls, recent health updates, breaking health news
 
 Rules:
-- Choose RAG_Agent for general medical knowledge questions
-- Choose WebSearch_Agent only for current/recent medical information
-- Choose Appointment_Agent for scheduling-related queries
-- Choose Logistics_Agent for facility information
+- Choose RAG_Agent for general medical knowledge questions, appointment inquiries, hospital/clinic information
+- Choose WebSearch_Agent ONLY for current/recent medical information that requires up-to-date search results
+- When in doubt, choose RAG_Agent
 
 Respond with only the agent name (e.g., "RAG_Agent")."""
 
@@ -62,14 +59,13 @@ Respond with only the agent name (e.g., "RAG_Agent")."""
             agent_decision = response.choices[0].message.content.strip()
             
             # Validate the response
-            valid_agents = ["RAG_Agent", "WebSearch_Agent", "Appointment_Agent", "Logistics_Agent"]
+            valid_agents = ["RAG_Agent", "WebSearch_Agent"]
             if agent_decision in valid_agents:
-                print(f"🔀 Router decision: {query[:50]}... → {agent_decision}")
                 return agent_decision
             else:
-                print(f"⚠️  Invalid router decision: {agent_decision}, defaulting to RAG_Agent")
+                print(f"⚠️  Invalid agent decision '{agent_decision}', defaulting to RAG_Agent")
                 return "RAG_Agent"
                 
         except Exception as e:
-            print(f"❌ Error in routing query: {str(e)}")
-            return "RAG_Agent"  # Default fallback
+            print(f"⚠️  Error in routing: {str(e)}, defaulting to RAG_Agent")
+            return "RAG_Agent"

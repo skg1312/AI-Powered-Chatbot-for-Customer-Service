@@ -8,7 +8,10 @@ import {
   Settings, 
   Database,
   Globe,
-  Bot
+  Bot,
+  Users,
+  LogOut,
+  Shield
 } from 'lucide-react';
 
 export default function AdminPanel() {
@@ -21,20 +24,45 @@ export default function AdminPanel() {
   const [newSite, setNewSite] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
+  const [adminSession, setAdminSession] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    loadConfiguration();
+    // Check admin authentication
+    const session = localStorage.getItem('adminSession');
+    if (!session) {
+      router.push('/admin-login');
+      return;
+    }
+
+    try {
+      const sessionData = JSON.parse(session);
+      if (sessionData.isAdmin) {
+        setAdminSession(sessionData);
+        setIsAuthenticated(true);
+        loadConfiguration();
+      } else {
+        router.push('/admin-login');
+      }
+    } catch (error) {
+      router.push('/admin-login');
+    }
   }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('adminSession');
+    router.push('/');
+  };
 
   const loadConfiguration = async () => {
     try {
-      const response = await fetch('/api/projects/main/config');
+      const response = await fetch('http://localhost:8000/api/projects/main/config');
       if (response.ok) {
         const data = await response.json();
         setConfig({
-          botPersona: data.botPersona || '',
-          curatedSites: data.curatedSites || [],
-          knowledgeBaseFiles: data.knowledgeBaseFiles || []
+          botPersona: data.bot_persona || '',
+          curatedSites: data.curated_sites || [],
+          knowledgeBaseFiles: data.knowledge_base_files || []
         });
       }
     } catch (error) {
@@ -46,22 +74,37 @@ export default function AdminPanel() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const response = await fetch('/api/projects/main/config', {
+      const response = await fetch('http://localhost:8000/api/projects/main/config', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(config),
+        body: JSON.stringify({
+          project_id: 'main',
+          bot_persona: config.botPersona,
+          curated_sites: config.curatedSites,
+          knowledge_base_files: config.knowledgeBaseFiles
+        }),
       });
 
       if (response.ok) {
         setSaveMessage('Configuration saved successfully!');
         setTimeout(() => setSaveMessage(''), 3000);
+        
+        // Reload the configuration to ensure UI is in sync
+        await loadConfiguration();
+        
+        // Notify parent window if opened from dashboard
+        if (window.opener) {
+          window.opener.postMessage('configUpdated', '*');
+        }
       } else {
-        setSaveMessage('Failed to save configuration');
+        const errorData = await response.json();
+        setSaveMessage(`Failed to save configuration: ${errorData.detail || 'Unknown error'}`);
       }
     } catch (error) {
-      setSaveMessage('Error saving configuration');
+      console.error('Error saving configuration:', error);
+      setSaveMessage('Error saving configuration: Network error');
     } finally {
       setIsSaving(false);
     }
@@ -93,6 +136,18 @@ export default function AdminPanel() {
     });
   };
 
+  // Show loading screen while checking authentication
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -106,22 +161,40 @@ export default function AdminPanel() {
               >
                 <ArrowLeft className="h-6 w-6" />
               </button>
-              <div className="p-2 bg-gray-600 rounded-lg">
-                <Settings className="h-8 w-8 text-white" />
+              <div className="p-2 bg-red-600 rounded-lg">
+                <Shield className="h-8 w-8 text-white" />
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">Admin Panel</h1>
-                <p className="text-sm text-gray-500">Configure your medical AI assistant</p>
+                <p className="text-sm text-gray-500">
+                  {adminSession ? `Welcome, ${adminSession.username}` : 'Configure your medical AI assistant'}
+                </p>
               </div>
             </div>
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg disabled:opacity-50"
-            >
-              <Save className="h-5 w-5" />
-              <span>{isSaving ? 'Saving...' : 'Save Changes'}</span>
-            </button>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => router.push('/user-management')}
+                className="flex items-center space-x-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg"
+              >
+                <Users className="h-5 w-5" />
+                <span>Manage Users</span>
+              </button>
+              <button
+                onClick={handleLogout}
+                className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg"
+              >
+                <LogOut className="h-5 w-5" />
+                <span>Logout</span>
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg disabled:opacity-50"
+              >
+                <Save className="h-5 w-5" />
+                <span>{isSaving ? 'Saving...' : 'Save Changes'}</span>
+              </button>
+            </div>
           </div>
           {saveMessage && (
             <div className={`px-4 py-2 rounded-lg mb-4 ${

@@ -249,6 +249,12 @@ Thumbs.db
 uploads/
 static/uploads/
 
+# Data files containing user information
+chat_history.json
+users.json
+users_with_auth.json
+project_configs.json
+
 # AI/ML models and data
 *.model
 *.pkl

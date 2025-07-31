@@ -8,7 +8,10 @@ import {
   MessageCircle,
   Loader2,
   Settings,
-  Trash2
+  Trash2,
+  Clock,
+  Hash,
+  Home
 } from 'lucide-react';
 
 export default function Playground() {
@@ -22,61 +25,123 @@ export default function Playground() {
     systemPrompt: 'You are a helpful medical AI assistant.'
   });
   const [showSettings, setShowSettings] = useState(false);
+  const [userId, setUserId] = useState('');
+  const [currentUser, setCurrentUser] = useState(null);
+  const [conversationId, setConversationId] = useState('');
+  const [isContinuedSession, setIsContinuedSession] = useState(false);
+  const [sessionInfo, setSessionInfo] = useState(null);
   const messagesEndRef = useRef(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  // Initialize session data
+  useEffect(() => {
+    // Check if user is logged in
+    const userData = localStorage.getItem('currentUser');
+    if (!userData) {
+      router.push('/login');
+      return;
+    }
+
+    const user = JSON.parse(userData);
+    setCurrentUser(user);
+    setUserId(user.user_id);
+
+    // Check for session continuation from URL params
+    const { session: sessionParam } = router.query;
+    
+    if (sessionParam) {
+      // Load specific session by ID
+      loadSessionById(sessionParam);
+    } else {
+      // Create new session
+      setConversationId('conversation_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now());
+    }
+  }, [router.query]);
+
+  const loadSessionById = async (sessionId) => {
+    try {
+      const response = await fetch(`http://localhost:8000/api/chat/session/${sessionId}`);
+      if (response.ok) {
+        const data = await response.json();
+        const session = data.session;
+        
+        setConversationId(sessionId);
+        setIsContinuedSession(true);
+        setSessionInfo(session);
+        
+        // Convert previous messages to the format expected by the UI
+        if (session.messages && session.messages.length > 0) {
+          const formattedMessages = session.messages.map(msg => ({
+            role: msg.role,
+            content: msg.content,
+            timestamp: new Date(msg.timestamp),
+            agent: msg.agent_used
+          }));
+          setMessages(formattedMessages);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load session:', error);
+    }
   };
 
+  // Auto-scroll to bottom when messages change
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!input.trim()) return;
+  const sendMessage = async () => {
+    if (!input.trim() || isLoading) return;
 
-    const userMessage = { role: 'user', content: input, timestamp: new Date() };
+    const userMessage = {
+      role: 'user',
+      content: input,
+      timestamp: new Date()
+    };
+
     setMessages(prev => [...prev, userMessage]);
-    setInput('');
     setIsLoading(true);
+    setInput('');
 
     try {
-      const response = await fetch('http://localhost:8000/api/chat/main', {
+      const response = await fetch(`http://localhost:8000/api/chat/default`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           message: input,
-          conversation_id: 'playground-' + Date.now()
+          user_id: userId,
+          session_id: conversationId,
+          continue_conversation: isContinuedSession,
+          user_profile: currentUser ? {
+            name: currentUser.name,
+            email: currentUser.email
+          } : null
         }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        const botMessage = { 
-          role: 'assistant', 
+        
+        const assistantMessage = {
+          role: 'assistant',
           content: data.response,
-          agent: data.agent_used,
-          timestamp: new Date() 
-        };
-        setMessages(prev => [...prev, botMessage]);
-      } else {
-        const errorMessage = { 
-          role: 'assistant', 
-          content: 'Sorry, I encountered an error processing your request.',
           timestamp: new Date(),
-          error: true
+          agent: data.agent_used
         };
-        setMessages(prev => [...prev, errorMessage]);
+
+        setMessages(prev => [...prev, assistantMessage]);
+        setIsContinuedSession(true);
+      } else {
+        throw new Error('Failed to send message');
       }
     } catch (error) {
-      const errorMessage = { 
-        role: 'assistant', 
-        content: 'Sorry, I could not connect to the chat service.',
+      console.error('Error sending message:', error);
+      const errorMessage = {
+        role: 'assistant',
+        content: 'Sorry, I encountered an error. Please try again.',
         timestamp: new Date(),
-        error: true
+        isError: true
       };
       setMessages(prev => [...prev, errorMessage]);
     } finally {
@@ -84,61 +149,104 @@ export default function Playground() {
     }
   };
 
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
   const clearChat = () => {
     setMessages([]);
+    setConversationId('conversation_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now());
+    setIsContinuedSession(false);
+    setSessionInfo(null);
   };
 
   const formatTime = (timestamp) => {
-    return timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return new Date(timestamp).toLocaleTimeString();
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center space-x-3">
+          <div className="flex justify-between items-center py-6">
+            <div className="flex items-center space-x-4">
               <button
-                onClick={() => router.push('/')}
-                className="p-2 text-gray-600 hover:text-gray-900"
+                onClick={() => router.push('/user-dashboard')}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Back to Dashboard"
               >
-                <ArrowLeft className="h-6 w-6" />
+                <Home className="h-6 w-6 text-gray-600" />
               </button>
-              <div className="p-2 bg-blue-600 rounded-lg">
-                <MessageCircle className="h-8 w-8 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Chat Playground</h1>
-                <p className="text-sm text-gray-500">Test your medical AI assistant</p>
+              <div className="flex items-center space-x-3">
+                <div className="p-3 bg-green-600 rounded-lg">
+                  <MessageCircle className="h-8 w-8 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">Medical AI Chat</h1>
+                  <p className="text-gray-600">
+                    {isContinuedSession ? `Session: ${conversationId.slice(0, 12)}...` : 'New Conversation'}
+                  </p>
+                </div>
               </div>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-4">
+              {sessionInfo && (
+                <div className="text-sm text-gray-600">
+                  <div className="flex items-center space-x-2">
+                    <Clock className="h-4 w-4" />
+                    <span>Started: {new Date(sessionInfo.created_at).toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
               <button
                 onClick={() => setShowSettings(!showSettings)}
-                className="p-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100"
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Settings"
               >
-                <Settings className="h-6 w-6" />
+                <Settings className="h-6 w-6 text-gray-600" />
               </button>
               <button
                 onClick={clearChat}
-                className="p-2 text-gray-600 hover:text-red-600 rounded-lg hover:bg-gray-100"
+                className="p-2 hover:bg-red-100 rounded-lg transition-colors"
+                title="Clear Chat"
               >
-                <Trash2 className="h-6 w-6" />
+                <Trash2 className="h-6 w-6 text-red-600" />
               </button>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Settings Panel */}
-      {showSettings && (
-        <div className="bg-white border-b shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Session Info */}
+        {isContinuedSession && sessionInfo && (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center space-x-2 mb-2">
+              <Hash className="h-4 w-4 text-blue-600" />
+              <span className="text-sm font-medium text-blue-800">Continuing Session</span>
+            </div>
+            <p className="text-sm text-blue-700">
+              Session ID: {conversationId}
+            </p>
+            <p className="text-sm text-blue-700">
+              Messages: {messages.length} • 
+              Started: {new Date(sessionInfo.created_at).toLocaleString()}
+            </p>
+          </div>
+        )}
+
+        {/* Settings Panel */}
+        {showSettings && (
+          <div className="mb-6 p-6 bg-white rounded-lg shadow-sm border">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Chat Settings</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Temperature
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Temperature: {settings.temperature}
                 </label>
                 <input
                   type="range"
@@ -146,160 +254,125 @@ export default function Playground() {
                   max="1"
                   step="0.1"
                   value={settings.temperature}
-                  onChange={(e) => setSettings({...settings, temperature: parseFloat(e.target.value)})}
+                  onChange={(e) => setSettings(prev => ({ ...prev, temperature: parseFloat(e.target.value) }))}
                   className="w-full"
                 />
-                <div className="text-xs text-gray-500">{settings.temperature}</div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Max Tokens
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Max Tokens: {settings.maxTokens}
                 </label>
                 <input
-                  type="number"
+                  type="range"
                   min="100"
                   max="2000"
+                  step="100"
                   value={settings.maxTokens}
-                  onChange={(e) => setSettings({...settings, maxTokens: parseInt(e.target.value)})}
-                  className="w-full p-2 border border-gray-300 rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  System Prompt
-                </label>
-                <input
-                  type="text"
-                  value={settings.systemPrompt}
-                  onChange={(e) => setSettings({...settings, systemPrompt: e.target.value})}
-                  className="w-full p-2 border border-gray-300 rounded"
+                  onChange={(e) => setSettings(prev => ({ ...prev, maxTokens: parseInt(e.target.value) }))}
+                  className="w-full"
                 />
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Chat Container */}
-      <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full">
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.length === 0 ? (
-            <div className="text-center py-12">
-              <Bot className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Start a conversation</h3>
-              <p className="text-gray-500">Ask any medical question to test your AI assistant</p>
-              <div className="mt-6 space-y-2">
-                <div className="text-sm text-gray-400">Try asking:</div>
-                <div className="flex flex-wrap justify-center gap-2">
-                  {[
-                    "What are the symptoms of diabetes?",
-                    "How to treat a minor burn?",
-                    "When should I see a doctor?",
-                    "Book an appointment for next week"
-                  ].map((suggestion) => (
-                    <button
-                      key={suggestion}
-                      onClick={() => setInput(suggestion)}
-                      className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-full text-sm text-gray-600"
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
+        {/* Chat Messages */}
+        <div className="bg-white rounded-lg shadow-sm border mb-6">
+          <div className="h-96 overflow-y-auto p-6 space-y-4">
+            {messages.length === 0 ? (
+              <div className="text-center text-gray-500 py-8">
+                <Bot className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                <p className="text-lg font-medium">Welcome to Medical AI Assistant</p>
+                <p className="text-sm">Ask me anything about health and medical topics.</p>
+                {currentUser && (
+                  <p className="text-sm mt-2">Hello, {currentUser.name}! How can I help you today?</p>
+                )}
               </div>
-            </div>
-          ) : (
-            messages.map((message, index) => (
-              <div
-                key={index}
-                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
+            ) : (
+              messages.map((message, index) => (
                 <div
-                  className={`max-w-3xl rounded-lg p-4 ${
-                    message.role === 'user'
-                      ? 'bg-blue-600 text-white'
-                      : message.error
-                      ? 'bg-red-50 text-red-900 border border-red-200'
-                      : 'bg-white text-gray-900 shadow-md border'
+                  key={index}
+                  className={`flex items-start space-x-3 ${
+                    message.role === 'user' ? 'justify-end' : 'justify-start'
                   }`}
                 >
-                  <div className="flex items-start space-x-3">
-                    <div className={`p-2 rounded-full ${
-                      message.role === 'user' 
-                        ? 'bg-blue-500' 
-                        : message.error
-                        ? 'bg-red-200'
-                        : 'bg-gray-100'
-                    }`}>
-                      {message.role === 'user' ? (
-                        <User className="h-4 w-4 text-white" />
-                      ) : (
-                        <Bot className={`h-4 w-4 ${message.error ? 'text-red-600' : 'text-gray-600'}`} />
+                  {message.role === 'assistant' && (
+                    <div className="p-2 bg-green-100 rounded-full">
+                      <Bot className="h-5 w-5 text-green-600" />
+                    </div>
+                  )}
+                  <div
+                    className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                      message.role === 'user'
+                        ? 'bg-green-600 text-white'
+                        : message.isError
+                        ? 'bg-red-100 text-red-800 border border-red-200'
+                        : 'bg-gray-100 text-gray-900'
+                    }`}
+                  >
+                    <p className="text-sm">{message.content}</p>
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-xs opacity-70">
+                        {formatTime(message.timestamp)}
+                      </p>
+                      {message.agent && (
+                        <span className="text-xs opacity-70">
+                          {message.agent}
+                        </span>
                       )}
                     </div>
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2 mb-1">
-                        <span className="font-medium">
-                          {message.role === 'user' ? 'You' : 'Medical AI'}
-                        </span>
-                        {message.agent && (
-                          <span className="text-xs px-2 py-1 bg-gray-200 text-gray-600 rounded-full">
-                            {message.agent}
-                          </span>
-                        )}
-                        <span className="text-xs opacity-70">
-                          {formatTime(message.timestamp)}
-                        </span>
-                      </div>
-                      <div className="prose prose-sm max-w-none">
-                        {message.content}
-                      </div>
+                  </div>
+                  {message.role === 'user' && (
+                    <div className="p-2 bg-green-100 rounded-full">
+                      <User className="h-5 w-5 text-green-600" />
                     </div>
-                  </div>
+                  )}
                 </div>
-              </div>
-            ))
-          )}
-          
-          {isLoading && (
-            <div className="flex justify-start">
-              <div className="bg-white text-gray-900 shadow-md border rounded-lg p-4 max-w-3xl">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 rounded-full bg-gray-100">
-                    <Bot className="h-4 w-4 text-gray-600" />
-                  </div>
+              ))
+            )}
+            {isLoading && (
+              <div className="flex items-start space-x-3">
+                <div className="p-2 bg-green-100 rounded-full">
+                  <Bot className="h-5 w-5 text-green-600" />
+                </div>
+                <div className="bg-gray-100 text-gray-900 px-4 py-2 rounded-lg">
                   <div className="flex items-center space-x-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    <span className="text-sm text-gray-500">AI is thinking...</span>
+                    <span className="text-sm">Thinking...</span>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
-          
-          <div ref={messagesEndRef} />
+            )}
+            <div ref={messagesEndRef} />
+          </div>
         </div>
 
-        {/* Input Form */}
-        <div className="border-t bg-white p-4">
-          <form onSubmit={handleSubmit} className="flex space-x-4">
-            <input
-              type="text"
+        {/* Message Input */}
+        <div className="bg-white rounded-lg shadow-sm border p-4">
+          <div className="flex space-x-4">
+            <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask a medical question..."
-              className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              disabled={isLoading}
+              onKeyPress={handleKeyPress}
+              placeholder="Ask me about your health concerns..."
+              className="flex-1 resize-none border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              rows="3"
             />
             <button
-              type="submit"
-              disabled={isLoading || !input.trim()}
-              className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={sendMessage}
+              disabled={!input.trim() || isLoading}
+              className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg transition-colors flex items-center space-x-2"
             >
-              <Send className="h-5 w-5" />
+              <Send className="h-4 w-4" />
+              <span>Send</span>
             </button>
-          </form>
+          </div>
+          <div className="mt-2 text-xs text-gray-500">
+            Press Enter to send • Shift+Enter for new line
+            {conversationId && (
+              <span className="ml-2">• Session: {conversationId.slice(-8)}</span>
+            )}
+          </div>
         </div>
       </div>
     </div>
