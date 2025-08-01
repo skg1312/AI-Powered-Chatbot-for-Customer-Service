@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 import hashlib
 import secrets
 import jwt
+import uuid
 from datetime import datetime, timedelta
 
 # Load environment variables
@@ -888,7 +889,6 @@ async def chat_endpoint(project_id: str, request: ChatRequest):
         
         # Generate conversation_id if not provided
         if not conversation_id:
-            import uuid
             conversation_id = f"session_{int(datetime.now().timestamp())}_{str(uuid.uuid4())[:8]}"
             logger.info(f"Generated new conversation_id: {conversation_id}")
         
@@ -959,6 +959,20 @@ async def chat_endpoint(project_id: str, request: ChatRequest):
     except Exception as e:
         logger.error(f"Error in chat endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/api/chat", response_model=ChatResponse)
+async def simple_chat_endpoint(request: ChatRequest):
+    """
+    Simple chat endpoint for playground use (uses default project).
+    
+    Args:
+        request (ChatRequest): Chat request with message
+        
+    Returns:
+        ChatResponse: Generated response with metadata
+    """
+    # Use the main chat endpoint with default project
+    return await chat_endpoint("main", request)
 
 @app.post("/api/projects/{project_id}/config")
 async def update_project_config(project_id: str, config_data: ProjectConfig):
@@ -1513,9 +1527,9 @@ async def get_agents_status():
         }
 
 @app.get("/api/chat/history")
-async def get_chat_history():
+async def get_all_chat_history():
     """
-    Get all chat sessions for user dashboard or admin.
+    Get all chat sessions for the main page (simplified version).
     
     Returns:
         dict: All chat sessions
@@ -1523,13 +1537,116 @@ async def get_chat_history():
     try:
         # Use database to get all sessions
         sessions_data = await get_all_sessions_db()
+        
+        # Filter out sessions without proper data and format for display
+        formatted_sessions = []
+        for session in sessions_data.get("sessions", []):
+            if session.get("session_id") and session.get("messages"):
+                # Get first message as title if available
+                messages = session.get("messages", [])
+                if isinstance(messages, str):
+                    try:
+                        messages = json.loads(messages)
+                    except:
+                        messages = []
+                
+                title = session.get("title", "")
+                if not title and messages:
+                    # Use first user message as title
+                    for msg in messages:
+                        if isinstance(msg, dict) and msg.get("role") == "user":
+                            content = msg.get("content", "")
+                            title = content[:50] + "..." if len(content) > 50 else content
+                            break
+                
+                formatted_sessions.append({
+                    "session_id": session.get("session_id"),
+                    "title": title or "Chat Session",
+                    "user_id": session.get("user_id"),
+                    "project_id": session.get("project_id", "main"),
+                    "message_count": len(messages) if isinstance(messages, list) else 0,
+                    "created_at": session.get("created_at"),
+                    "updated_at": session.get("updated_at"),
+                    "status": session.get("status", "active")
+                })
+        
+        # Sort by updated_at (newest first)
+        formatted_sessions.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+        
         return {
             "success": True,
-            "sessions": sessions_data.get("sessions", [])
+            "sessions": formatted_sessions,
+            "total": len(formatted_sessions)
         }
+        
     except Exception as e:
-        logger.error(f"Error getting chat history: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get chat history: {str(e)}")
+        logger.error(f"Error getting all chat history: {str(e)}")
+        return {
+            "success": False,
+            "sessions": [],
+            "total": 0,
+            "error": str(e)
+        }
+
+@app.get("/api/playground/sessions")
+async def get_playground_sessions(user_id: str = None, limit: int = 20):
+    """
+    Get recent chat sessions for playground view.
+    
+    Args:
+        user_id (str, optional): Filter by specific user
+        limit (int): Maximum number of sessions to return
+        
+    Returns:
+        dict: Recent sessions for playground
+    """
+    try:
+        # Use database to get sessions
+        sessions_data = await get_all_sessions_db()
+        sessions = sessions_data.get("sessions", [])
+        
+        # Filter by user if provided
+        if user_id:
+            sessions = [s for s in sessions if s.get("user_id") == user_id]
+        
+        # Format for playground display
+        formatted_sessions = []
+        for session in sessions:
+            if session.get("session_id"):
+                messages = session.get("messages", [])
+                if isinstance(messages, str):
+                    try:
+                        messages = json.loads(messages)
+                    except:
+                        messages = []
+                
+                formatted_sessions.append({
+                    "session_id": session.get("session_id"),
+                    "title": session.get("title") or "Chat Session",
+                    "message_count": len(messages) if isinstance(messages, list) else 0,
+                    "created_at": session.get("created_at"),
+                    "updated_at": session.get("updated_at"),
+                    "user_id": session.get("user_id")
+                })
+        
+        # Sort by updated_at (newest first) and limit
+        formatted_sessions.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+        formatted_sessions = formatted_sessions[:limit]
+        
+        return {
+            "success": True,
+            "sessions": formatted_sessions,
+            "total": len(formatted_sessions)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting playground sessions: {str(e)}")
+        return {
+            "success": False,
+            "sessions": [],
+            "total": 0,
+            "error": str(e)
+        }
 
 @app.get("/api/chat/session/{session_id}")
 async def get_session_details(session_id: str):
