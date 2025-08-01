@@ -74,14 +74,17 @@ class RAGAgent:
             List[List[float]]: List of embedding vectors
         """
         try:
-            # For sentence-transformers models, we need to send the texts correctly
+            # Use the feature extraction API with BGE model
+            feature_extraction_url = f"https://api-inference.huggingface.co/models/{self.embedding_model}"
+            
+            # For single text or multiple texts
             if isinstance(texts, list) and len(texts) == 1:
                 payload = {"inputs": texts[0]}
             else:
                 payload = {"inputs": texts}
                 
             response = requests.post(
-                self.embedding_url,
+                feature_extraction_url,
                 headers=self.headers,
                 json=payload,
                 timeout=30
