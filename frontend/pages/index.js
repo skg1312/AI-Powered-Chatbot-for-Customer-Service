@@ -198,7 +198,7 @@ export default function Home() {
         </div>
 
         {/* Action Buttons */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
           <button
             onClick={() => router.push('/register')}
             className="bg-green-600 hover:bg-green-700 text-white rounded-xl p-8 text-center transition-colors group"
@@ -233,6 +233,15 @@ export default function Home() {
             <History className="h-12 w-12 mx-auto mb-4 group-hover:scale-110 transition-transform" />
             <h3 className="text-xl font-bold mb-2">Chat History</h3>
             <p className="text-purple-100">View public conversation sessions</p>
+          </button>
+
+          <button
+            onClick={() => router.push('/api-status')}
+            className="bg-orange-600 hover:bg-orange-700 text-white rounded-xl p-8 text-center transition-colors group"
+          >
+            <Activity className="h-12 w-12 mx-auto mb-4 group-hover:scale-110 transition-transform" />
+            <h3 className="text-xl font-bold mb-2">API Status</h3>
+            <p className="text-orange-100">Monitor backend services and APIs</p>
           </button>
         </div>
       </main>

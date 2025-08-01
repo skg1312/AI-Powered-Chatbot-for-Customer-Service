@@ -31,7 +31,7 @@ class Config:
     ROUTER_MODEL: str = "llama-3.3-70b-versatile"
     GENERATION_MODEL: str = "llama-3.3-70b-versatile"
     SAFETY_MODEL: str = "llama-3.3-70b-versatile"  # Using main model for safety checks
-    EMBEDDING_MODEL: str = "microsoft/DialoGPT-medium"
+    EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
     
     # Validation
     @classmethod

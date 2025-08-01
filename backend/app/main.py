@@ -113,6 +113,148 @@ async def health_check():
         "version": "1.0.0"
     }
 
+# Root endpoint with API status
+@app.get("/")
+@app.head("/")
+async def root():
+    """Root endpoint with basic API information"""
+    return {
+        "service": "Medical AI Chatbot Backend",
+        "status": "operational",
+        "version": "1.0.0",
+        "timestamp": datetime.utcnow().isoformat(),
+        "docs": "/docs",
+        "health": "/health",
+        "api_status": "/api/status"
+    }
+
+# Comprehensive API status endpoint
+@app.get("/api/status")
+async def api_status():
+    """Comprehensive API status check for all services"""
+    status = {
+        "service": "Medical AI Chatbot Backend",
+        "timestamp": datetime.utcnow().isoformat(),
+        "overall_status": "operational",
+        "services": {}
+    }
+    
+    # Check Groq API
+    try:
+        groq_client = Groq(api_key=config.get_groq_api_key())
+        test_response = groq_client.chat.completions.create(
+            messages=[{"role": "user", "content": "test"}],
+            model="llama-3.3-70b-versatile",
+            max_tokens=5,
+            temperature=0
+        )
+        status["services"]["groq"] = {
+            "status": "operational",
+            "model": "llama-3.3-70b-versatile",
+            "last_check": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        status["services"]["groq"] = {
+            "status": "error",
+            "error": str(e)[:100],
+            "last_check": datetime.utcnow().isoformat()
+        }
+        status["overall_status"] = "degraded"
+    
+    # Check HuggingFace API
+    try:
+        import requests
+        hf_token = config.get_hf_token()
+        headers = {"Authorization": f"Bearer {hf_token}"}
+        embedding_url = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
+        
+        response = requests.post(
+            embedding_url,
+            headers=headers,
+            json={"inputs": "test"},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            status["services"]["huggingface"] = {
+                "status": "operational",
+                "model": "sentence-transformers/all-MiniLM-L6-v2",
+                "last_check": datetime.utcnow().isoformat()
+            }
+        else:
+            status["services"]["huggingface"] = {
+                "status": "error",
+                "error": f"HTTP {response.status_code}",
+                "last_check": datetime.utcnow().isoformat()
+            }
+            status["overall_status"] = "degraded"
+    except Exception as e:
+        status["services"]["huggingface"] = {
+            "status": "error",
+            "error": str(e)[:100],
+            "last_check": datetime.utcnow().isoformat()
+        }
+        status["overall_status"] = "degraded"
+    
+    # Check Pinecone
+    try:
+        from pinecone import Pinecone
+        pinecone_config = config.get_pinecone_config()
+        pc = Pinecone(api_key=pinecone_config["api_key"])
+        indexes = pc.list_indexes()
+        
+        status["services"]["pinecone"] = {
+            "status": "operational",
+            "indexes": len(indexes.names()) if hasattr(indexes, 'names') else 0,
+            "last_check": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        status["services"]["pinecone"] = {
+            "status": "error",
+            "error": str(e)[:100],
+            "last_check": datetime.utcnow().isoformat()
+        }
+        status["overall_status"] = "degraded"
+    
+    # Check Tavily AI
+    try:
+        from tavily import TavilyClient
+        tavily_client = TavilyClient(api_key=config.get_tavily_api_key())
+        # Simple test query
+        test_result = tavily_client.search("test", max_results=1)
+        
+        status["services"]["tavily"] = {
+            "status": "operational",
+            "last_check": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        status["services"]["tavily"] = {
+            "status": "error",
+            "error": str(e)[:100],
+            "last_check": datetime.utcnow().isoformat()
+        }
+        status["overall_status"] = "degraded"
+    
+    # Check Supabase Database
+    try:
+        from app.database.supabase_db import get_users
+        users = get_users()
+        
+        status["services"]["supabase"] = {
+            "status": "operational",
+            "database_type": "supabase",
+            "last_check": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        status["services"]["supabase"] = {
+            "status": "error",
+            "error": str(e)[:100],
+            "last_check": datetime.utcnow().isoformat()
+        }
+        status["overall_status"] = "degraded"
+    
+    return status
+
 @app.options("/{full_path:path}")
 async def preflight_handler(request: Request, full_path: str):
     """Handle CORS preflight requests"""
