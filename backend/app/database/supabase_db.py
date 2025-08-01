@@ -186,7 +186,7 @@ class SupabaseDB:
                 "project_id": session_data.get("project_id", "main"),
                 "title": session_data.get("title"),
                 "status": session_data.get("status", "active"),
-                "messages": json.dumps(session_data.get("messages", [])),
+                "messages": session_data.get("messages", []),  # Store as JSONB directly
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }
@@ -208,14 +208,20 @@ class SupabaseDB:
         try:
             result = self.client.table('chat_sessions').select('*').order('created_at', desc=True).execute()
             
-            # Parse messages JSON for each session
+            # Handle messages field for each session
             sessions = []
             if result.data:
                 for session in result.data:
                     session_copy = session.copy()
-                    try:
-                        session_copy["messages"] = json.loads(session["messages"]) if session["messages"] else []
-                    except json.JSONDecodeError:
+                    messages = session.get("messages", [])
+                    if isinstance(messages, str):
+                        try:
+                            session_copy["messages"] = json.loads(messages)
+                        except json.JSONDecodeError:
+                            session_copy["messages"] = []
+                    elif isinstance(messages, list):
+                        session_copy["messages"] = messages
+                    else:
                         session_copy["messages"] = []
                     sessions.append(session_copy)
             
@@ -233,14 +239,20 @@ class SupabaseDB:
         try:
             result = self.client.table('chat_sessions').select('*').eq('user_id', user_id).order('created_at', desc=True).execute()
             
-            # Parse messages JSON for each session
+            # Handle messages field for each session
             sessions = []
             if result.data:
                 for session in result.data:
                     session_copy = session.copy()
-                    try:
-                        session_copy["messages"] = json.loads(session["messages"]) if session["messages"] else []
-                    except json.JSONDecodeError:
+                    messages = session.get("messages", [])
+                    if isinstance(messages, str):
+                        try:
+                            session_copy["messages"] = json.loads(messages)
+                        except json.JSONDecodeError:
+                            session_copy["messages"] = []
+                    elif isinstance(messages, list):
+                        session_copy["messages"] = messages
+                    else:
                         session_copy["messages"] = []
                     sessions.append(session_copy)
             
@@ -257,9 +269,16 @@ class SupabaseDB:
             
             if result.data and len(result.data) > 0:
                 session = result.data[0].copy()
-                try:
-                    session["messages"] = json.loads(session["messages"]) if session["messages"] else []
-                except json.JSONDecodeError:
+                # Handle messages field - it might be stored as JSON string or JSONB
+                messages = session.get("messages", [])
+                if isinstance(messages, str):
+                    try:
+                        session["messages"] = json.loads(messages)
+                    except json.JSONDecodeError:
+                        session["messages"] = []
+                elif isinstance(messages, list):
+                    session["messages"] = messages
+                else:
                     session["messages"] = []
                 return session
             return None
@@ -271,13 +290,25 @@ class SupabaseDB:
     async def update_session(self, session_id: str, update_data: Dict[str, Any]) -> bool:
         """Update a chat session."""
         try:
-            # Convert messages list to JSON string if present
-            if "messages" in update_data:
-                update_data["messages"] = json.dumps(update_data["messages"])
+            update_record = update_data.copy()
             
-            update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            # Handle messages field - store as JSONB directly
+            if "messages" in update_record:
+                messages = update_record["messages"]
+                if isinstance(messages, list):
+                    # Keep as list for JSONB storage
+                    pass
+                elif isinstance(messages, str):
+                    try:
+                        update_record["messages"] = json.loads(messages)
+                    except json.JSONDecodeError:
+                        update_record["messages"] = []
+                else:
+                    update_record["messages"] = []
             
-            result = self.client.table('chat_sessions').update(update_data).eq('session_id', session_id).execute()
+            update_record["updated_at"] = datetime.now(timezone.utc).isoformat()
+            
+            result = self.client.table('chat_sessions').update(update_record).eq('session_id', session_id).execute()
             
             if result.data:
                 logger.info(f"✅ Session updated successfully: {session_id}")

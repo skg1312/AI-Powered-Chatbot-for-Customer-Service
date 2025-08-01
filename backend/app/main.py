@@ -407,47 +407,74 @@ async def save_chat_message(project_id: str, session_id: str, user_id: str, user
         # Use Supabase database ONLY
         db = get_database()
         
-        # Check if user exists in Supabase, if not set user_id to None to avoid foreign key constraint
+        # Handle user_id validation
         user_id_for_db = None
         if user_id:
-            existing_user = await db.get_user_by_id(user_id)
-            if existing_user:
-                user_id_for_db = user_id
-            else:
-                logger.info(f"User {user_id} not found in Supabase, saving session without user_id reference")
+            try:
+                existing_user = await db.get_user_by_id(user_id)
+                if existing_user:
+                    user_id_for_db = user_id
+                    logger.info(f"Found existing user for session: {user_id}")
+                else:
+                    logger.info(f"User {user_id} not found in Supabase, saving session as anonymous")
+            except Exception as e:
+                logger.warning(f"Error checking user {user_id}: {str(e)}, saving session as anonymous")
         
         # Check if session exists
-        existing_session = await db.get_session_by_id(session_id)
+        try:
+            existing_session = await db.get_session_by_id(session_id)
+        except Exception as e:
+            logger.warning(f"Error checking existing session {session_id}: {str(e)}")
+            existing_session = None
         
         if existing_session:
             # Update existing session with new messages
-            current_messages = existing_session.get("messages", [])
-            current_messages.extend([user_message_obj, bot_message_obj])
-            
-            await db.update_session(session_id, {
-                "messages": current_messages,
-                "updated_at": timestamp
-            })
+            try:
+                current_messages = existing_session.get("messages", [])
+                if isinstance(current_messages, str):
+                    # Handle case where messages are stored as JSON string
+                    import json
+                    current_messages = json.loads(current_messages)
+                elif not isinstance(current_messages, list):
+                    current_messages = []
+                
+                current_messages.extend([user_message_obj, bot_message_obj])
+                
+                await db.update_session(session_id, {
+                    "messages": current_messages,
+                    "updated_at": timestamp
+                })
+                logger.info(f"Updated existing session {session_id} with new messages")
+            except Exception as e:
+                logger.error(f"Error updating session {session_id}: {str(e)}")
+                raise
         else:
             # Create new session
-            session_data = {
-                "session_id": session_id,
-                "user_id": user_id_for_db,  # Use the validated user_id or None
-                "project_id": project_id,
-                "messages": [user_message_obj, bot_message_obj],
-                "title": user_message[:50] + "..." if len(user_message) > 50 else user_message,
-                "status": "active",
-                "created_at": timestamp,
-                "updated_at": timestamp
-            }
-            
-            await db.create_chat_session(session_data)
+            try:
+                session_data = {
+                    "session_id": session_id,
+                    "user_id": user_id_for_db,  # Use the validated user_id or None
+                    "project_id": project_id,
+                    "messages": [user_message_obj, bot_message_obj],
+                    "title": user_message[:50] + "..." if len(user_message) > 50 else user_message,
+                    "status": "active",
+                    "created_at": timestamp,
+                    "updated_at": timestamp
+                }
+                
+                await db.create_chat_session(session_data)
+                logger.info(f"Created new session {session_id} for project {project_id}")
+            except Exception as e:
+                logger.error(f"Error creating session {session_id}: {str(e)}")
+                raise
         
         logger.info(f"Saved chat message to Supabase for session {session_id}")
         
     except Exception as e:
         logger.error(f"Error saving chat message to Supabase: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to save chat message")
+        # Don't raise the exception to prevent chat from failing
+        # Just log the error and continue
+        logger.warning("Chat will continue despite session save failure")
 
 
 
@@ -858,7 +885,14 @@ async def chat_endpoint(project_id: str, request: ChatRequest):
         # Track user and session statistics
         user_id = request.user_id
         conversation_id = request.conversation_id
-        is_new_session = conversation_id is None  # New session if no conversation_id provided
+        
+        # Generate conversation_id if not provided
+        if not conversation_id:
+            import uuid
+            conversation_id = f"session_{int(datetime.now().timestamp())}_{str(uuid.uuid4())[:8]}"
+            logger.info(f"Generated new conversation_id: {conversation_id}")
+        
+        is_new_session = not request.conversation_id  # New session if no conversation_id was provided
         
         if user_id or is_new_session:
             update_project_stats(project_id, user_id, is_new_session)
@@ -903,17 +937,22 @@ async def chat_endpoint(project_id: str, request: ChatRequest):
         # Step 4: Safety check
         is_safe = safety_check(final_response)
         
-        # Step 5: Save to chat history
-        if conversation_id and user_id:
-            await save_chat_message(project_id, conversation_id, user_id, query, final_response, agent_decision)
+        # Step 5: Always save to chat history (with or without user_id)
+        await save_chat_message(project_id, conversation_id, user_id, query, final_response, agent_decision)
         
-        return ChatResponse(
+        response_data = ChatResponse(
             response=final_response,
             agent_used=agent_decision,
             sources=sources,
             safe=is_safe,
             project_id=project_id
         )
+        
+        # Add conversation_id to the response for frontend to track
+        response_dict = response_data.dict()
+        response_dict["conversation_id"] = conversation_id
+        
+        return response_dict
         
     except HTTPException:
         raise
@@ -1112,28 +1151,39 @@ async def register_new_user(user_data: UserRegistration):
     """
     try:
         from datetime import datetime
+        import uuid
         
         logger.info(f"Attempting to register user: {user_data.email}")
+        
+        # Validate input data
+        if not user_data.email or not user_data.name or not user_data.password:
+            raise HTTPException(status_code=400, detail="Email, name, and password are required")
         
         # Check if user already exists by email
         existing_user = await get_user_by_email_db(user_data.email)
         if existing_user:
             logger.warning(f"User already exists: {user_data.email}")
+            # Remove password hash from response for security
+            safe_profile = {k: v for k, v in existing_user.items() if k != "password_hash"}
             return {
                 "user_id": existing_user["user_id"],
                 "message": "User already exists",
-                "profile": existing_user
+                "profile": safe_profile,
+                "success": True
             }
         
-        # Generate unique user ID
-        user_id = f"user_{user_data.name.lower().replace(' ', '_')}_{int(datetime.now().timestamp())}"
+        # Generate unique user ID with timestamp and random component
+        timestamp = int(datetime.now().timestamp())
+        safe_name = user_data.name.lower().replace(' ', '_').replace('-', '_')
+        random_suffix = str(uuid.uuid4())[:8]
+        user_id = f"user_{safe_name}_{timestamp}_{random_suffix}"
         
         # Hash the password
         hashed_password = hash_password(user_data.password)
         
         logger.info(f"Generated user ID: {user_id}, USE_SUPABASE: {USE_SUPABASE}")
         
-        # Prepare user data
+        # Prepare user data with all required fields
         user_profile_data = {
             "user_id": user_id,
             "name": user_data.name,
@@ -1142,22 +1192,35 @@ async def register_new_user(user_data: UserRegistration):
             "phone": user_data.phone,
             "age": user_data.age,
             "medical_conditions": user_data.medical_conditions,
-            "emergency_contact": user_data.emergency_contact
+            "emergency_contact": user_data.emergency_contact,
+            "created_at": datetime.now().isoformat(),
+            "last_active": datetime.now().isoformat(),
+            "total_sessions": 0
         }
         
         logger.info(f"Creating user in database...")
         
         # Create user in database
         created_user_id = await create_user_db(user_profile_data)
+        
+        # Verify user was created and get the profile
         user_profile = await get_user_by_id_db(created_user_id)
         
+        if not user_profile:
+            logger.error(f"Failed to retrieve created user: {created_user_id}")
+            raise HTTPException(status_code=500, detail="User created but could not be retrieved")
+        
         logger.info(f"Successfully registered new user: {created_user_id}")
-        logger.info(f"User profile retrieved: {user_profile}")
+        logger.info(f"User profile retrieved: {bool(user_profile)}")
+        
+        # Remove password hash from response for security
+        safe_profile = {k: v for k, v in user_profile.items() if k != "password_hash"}
         
         return {
             "user_id": created_user_id,
             "message": "User registered successfully",
-            "profile": user_profile
+            "profile": safe_profile,
+            "success": True
         }
         
     except Exception as e:
@@ -1176,22 +1239,50 @@ async def login_user(login_data: UserLogin):
         LoginResponse: Access token and user profile
     """
     try:
-        # Authenticate user using database only
-        db = get_database()
+        logger.info(f"Login attempt for email: {login_data.email}")
+        
+        # Validate input
+        if not login_data.email or not login_data.password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email and password are required"
+            )
+        
         # Get user by email first
+        db = get_database()
         user = await db.get_user_by_email(login_data.email)
-        if user and verify_password(login_data.password, user.get('password_hash', '')):
-            # User authenticated successfully
-            pass
-        else:
-            user = None
         
         if not user:
+            logger.warning(f"User not found for email: {login_data.email}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found. Please register first.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Verify password
+        stored_password_hash = user.get('password_hash', '')
+        if not stored_password_hash:
+            logger.error(f"No password hash found for user: {login_data.email}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="User authentication data is corrupted. Please contact support."
+            )
+        
+        if not verify_password(login_data.password, stored_password_hash):
+            logger.warning(f"Invalid password for user: {login_data.email}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        
+        logger.info(f"User authenticated successfully: {user['user_id']}")
+        
+        # Update last active timestamp
+        await db.update_user(user['user_id'], {
+            "last_active": datetime.now().isoformat()
+        })
         
         # Create access token
         access_token = create_access_token(data={
@@ -1202,6 +1293,10 @@ async def login_user(login_data: UserLogin):
         
         # Remove password hash from response
         user_profile = {k: v for k, v in user.items() if k != "password_hash"}
+        
+        # Ensure total_sessions field exists
+        if "total_sessions" not in user_profile:
+            user_profile["total_sessions"] = 0
         
         return LoginResponse(
             access_token=access_token,
@@ -1546,6 +1641,102 @@ async def test_cors_origin(request: Dict[str, Any]):
         "allowed": is_allowed,
         "message": "Origin is allowed" if is_allowed else "Origin is not in CORS whitelist"
     }
+
+# Debug endpoints for troubleshooting
+@app.get("/api/debug/users")
+async def debug_get_all_users():
+    """Debug endpoint to check all users in the database"""
+    try:
+        users_data = await get_all_users_db()
+        return {
+            "success": True,
+            "total_users": users_data["total_users"],
+            "users": [
+                {
+                    "user_id": user.get("user_id"),
+                    "name": user.get("name"),
+                    "email": user.get("email"),
+                    "created_at": user.get("created_at"),
+                    "has_password": bool(user.get("password_hash"))
+                }
+                for user in users_data["users"]
+            ]
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.get("/api/debug/sessions")
+async def debug_get_all_sessions():
+    """Debug endpoint to check all sessions in the database"""
+    try:
+        sessions_data = await get_all_sessions_db()
+        return {
+            "success": True,
+            "total_sessions": sessions_data["total_sessions"],
+            "sessions": [
+                {
+                    "session_id": session.get("session_id"),
+                    "user_id": session.get("user_id"),
+                    "project_id": session.get("project_id"),
+                    "title": session.get("title"),
+                    "message_count": len(session.get("messages", [])),
+                    "created_at": session.get("created_at")
+                }
+                for session in sessions_data["sessions"]
+            ]
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/api/debug/test-registration")
+async def debug_test_registration(test_user: Dict[str, Any]):
+    """Debug endpoint to test user registration with detailed logging"""
+    try:
+        logger.info(f"Debug registration test started for: {test_user}")
+        
+        # Test basic validation
+        required_fields = ["name", "email", "password"]
+        missing_fields = [field for field in required_fields if not test_user.get(field)]
+        if missing_fields:
+            return {
+                "success": False,
+                "error": f"Missing required fields: {missing_fields}",
+                "step": "validation"
+            }
+        
+        # Test user existence check
+        existing_user = await get_user_by_email_db(test_user["email"])
+        if existing_user:
+            return {
+                "success": False,
+                "error": "User already exists",
+                "step": "duplicate_check",
+                "existing_user_id": existing_user.get("user_id")
+            }
+        
+        # Test user creation
+        user_data = UserRegistration(**test_user)
+        result = await register_new_user(user_data)
+        
+        return {
+            "success": True,
+            "result": result,
+            "step": "completed"
+        }
+        
+    except Exception as e:
+        logger.error(f"Debug registration failed: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e),
+            "step": "exception"
+        }
 
 if __name__ == "__main__":
     import uvicorn
