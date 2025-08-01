@@ -567,24 +567,14 @@ async def delete_user_db(user_id: str) -> bool:
     return await db.delete_user(user_id)
 
 async def get_all_sessions_db():
-    """Get all chat sessions from database."""
-    if USE_SUPABASE:
-        db = get_database()
-        return await db.get_all_sessions()
-    else:
-        # File-based fallback
-        return load_chat_history()
+    """Get all chat sessions from Supabase only."""
+    db = get_database()
+    return await db.get_all_sessions()
 
 async def get_session_by_id_db(session_id: str):
-    """Get session by ID from database."""
-    if USE_SUPABASE:
-        db = get_database()
-        return await db.get_session_by_id(session_id)
-    else:
-        # File-based fallback
-        history = load_chat_history()
-        sessions = history.get("sessions", [])
-        return next((s for s in sessions if s["session_id"] == session_id), None)
+    """Get session by ID from Supabase only."""
+    db = get_database()
+    return await db.get_session_by_id(session_id)
 
 async def get_project_config_db(project_id: str):
     """Get project configuration from Supabase only."""
@@ -737,6 +727,7 @@ async def health_check():
 def update_project_stats(project_id: str, user_id: str = None, new_session: bool = False):
     """
     Update project statistics for user and session tracking.
+    Now just logs the activity since we use Supabase for real stats.
     
     Args:
         project_id (str): Project identifier
@@ -744,34 +735,9 @@ def update_project_stats(project_id: str, user_id: str = None, new_session: bool
         new_session (bool): Whether this is a new chat session
     """
     try:
-        configs = load_project_configs()
-        project_config = configs.get(project_id, get_default_config(project_id))
-        
-        # Initialize stats if not present
-        if "stats" not in project_config:
-            project_config["stats"] = {
-                "total_users": 0,
-                "total_sessions": 0,
-                "unique_users": []
-            }
-        
-        stats = project_config["stats"]
-        
-        # Track unique users
-        if user_id and user_id not in stats.get("unique_users", []):
-            if "unique_users" not in stats:
-                stats["unique_users"] = []
-            stats["unique_users"].append(user_id)
-            stats["total_users"] = len(stats["unique_users"])
-        
-        # Track new sessions
-        if new_session:
-            stats["total_sessions"] = stats.get("total_sessions", 0) + 1
-        
-        # Save updated configuration
-        configs[project_id] = project_config
-        save_project_configs(configs)
-        logger.info(f"Updated stats for project {project_id}: {stats}")
+        logger.info(f"Project stats update: project={project_id}, user={user_id}, new_session={new_session}")
+        # Since we use Supabase for real stats, this function now just logs activity
+        # The actual stats are computed dynamically from the database
         
     except Exception as e:
         logger.error(f"Error updating project stats: {str(e)}")
@@ -790,10 +756,8 @@ def generate_final_response(query: str, context: str, agent_used: str, project_i
         str: Generated response
     """
     try:
-        # Load project configuration to get the custom bot persona
-        configs = load_project_configs()
-        project_config = configs.get(project_id, get_default_config(project_id))
-        bot_persona = project_config.get("bot_persona", "You are a helpful medical AI assistant.")
+        # Use default bot persona since we removed file-based config loading
+        bot_persona = "You are a compassionate medical AI assistant that provides accurate health information while emphasizing the importance of consulting healthcare professionals."
         
         # Build system prompt with custom persona and context
         system_prompt = f"""{bot_persona}
@@ -900,8 +864,9 @@ async def chat_endpoint(project_id: str, request: ChatRequest):
             update_project_stats(project_id, user_id, is_new_session)
         
         # Update user activity if user is registered
+        # Note: Activity tracking now handled by Supabase automatically
         if user_id and is_new_session:
-            update_user_activity(user_id)
+            logger.info(f"New session started for user {user_id}")
         
         # Step 1: Route the query to appropriate agent
         agent_decision = route_query(query)
@@ -911,9 +876,8 @@ async def chat_endpoint(project_id: str, request: ChatRequest):
         context = ""
         sources = {}
         
-        # Load project configuration for agent customization
-        configs = load_project_configs()
-        project_config = configs.get(project_id, get_default_config(project_id))
+        # Load project configuration for agent customization (use database)
+        project_config = await get_project_config_db(project_id)
         
         if agent_decision == "RAG_Agent":
             rag_result = rag_agent.execute_rag_search(query)
@@ -970,24 +934,23 @@ async def update_project_config(project_id: str, config_data: ProjectConfig):
         dict: Success message
     """
     try:
-        # Load existing configurations
-        configs = load_project_configs()
-        
-        # Update the specific project configuration
-        configs[project_id] = {
+        # Prepare config data for database
+        config_dict = {
             "project_id": project_id,
             "bot_persona": config_data.bot_persona,
             "curated_sites": config_data.curated_sites,
             "knowledge_base_files": config_data.knowledge_base_files
         }
         
-        # Save back to file
-        if save_project_configs(configs):
+        # Update using database abstraction layer
+        success = await update_project_config_db(project_id, config_dict)
+        
+        if success:
             logger.info(f"Configuration saved for project {project_id}")
             return {
                 "status": "success",
                 "message": f"Configuration updated for project {project_id}",
-                "config": configs[project_id]
+                "config": config_dict
             }
         else:
             raise HTTPException(status_code=500, detail="Failed to save configuration")
@@ -1000,18 +963,9 @@ async def update_project_config(project_id: str, config_data: ProjectConfig):
 async def get_project_config(project_id: str):
     """Get project configuration."""
     try:
-        # Load configurations from file
-        configs = load_project_configs()
-        
-        # Return saved config or default if not found
-        if project_id in configs:
-            return configs[project_id]
-        else:
-            # Return and save default configuration
-            default_config = get_default_config(project_id)
-            configs[project_id] = default_config
-            save_project_configs(configs)
-            return default_config
+        # Use database abstraction layer
+        config = await get_project_config_db(project_id)
+        return config
             
     except Exception as e:
         logger.error(f"Error getting config: {str(e)}")
@@ -1099,11 +1053,10 @@ async def get_chat_session(project_id: str, session_id: str):
         dict: Chat session data
     """
     try:
-        chat_data = load_chat_history()
-        project_sessions = chat_data.get(project_id, {})
-        
-        if session_id in project_sessions:
-            return project_sessions[session_id]
+        # Use database to get session
+        session = await get_session_by_id_db(session_id)
+        if session and session.get("project_id") == project_id:
+            return session
         else:
             raise HTTPException(status_code=404, detail="Chat session not found")
             
@@ -1126,13 +1079,16 @@ async def delete_chat_session(project_id: str, session_id: str):
         dict: Success message
     """
     try:
-        chat_data = load_chat_history()
-        project_sessions = chat_data.get(project_id, {})
+        # Use database to delete session
+        db = get_database()
+        session = await get_session_by_id_db(session_id)
         
-        if session_id in project_sessions:
-            del project_sessions[session_id]
-            save_chat_history(chat_data)
-            return {"message": "Chat session deleted successfully"}
+        if session and session.get("project_id") == project_id:
+            success = await db.delete_session(session_id)
+            if success:
+                return {"message": "Chat session deleted successfully"}
+            else:
+                raise HTTPException(status_code=500, detail="Failed to delete session")
         else:
             raise HTTPException(status_code=404, detail="Chat session not found")
             
@@ -1220,18 +1176,15 @@ async def login_user(login_data: UserLogin):
         LoginResponse: Access token and user profile
     """
     try:
-        # Authenticate user using database
-        if USE_SUPABASE:
-            db = get_database()
-            # Get user by email first
-            user = await db.get_user_by_email(login_data.email)
-            if user and verify_password(login_data.password, user.get('password_hash', '')):
-                # User authenticated successfully
-                pass
-            else:
-                user = None
+        # Authenticate user using database only
+        db = get_database()
+        # Get user by email first
+        user = await db.get_user_by_email(login_data.email)
+        if user and verify_password(login_data.password, user.get('password_hash', '')):
+            # User authenticated successfully
+            pass
         else:
-            user = authenticate_user(login_data.email, login_data.password)
+            user = None
         
         if not user:
             raise HTTPException(
@@ -1320,22 +1273,29 @@ async def update_user(user_id: str, user_data: UserRegistration):
         dict: Updated user profile
     """
     try:
-        users = load_users()
-        if user_id not in users:
+        # Check if user exists
+        existing_user = await get_user_by_id_db(user_id)
+        if not existing_user:
             raise HTTPException(status_code=404, detail="User not found")
         
-        # Update user data
-        users[user_id].update({
+        # Prepare update data
+        update_data = {
             "name": user_data.name,
             "email": user_data.email,
             "phone": user_data.phone,
             "age": user_data.age,
             "medical_conditions": user_data.medical_conditions,
             "emergency_contact": user_data.emergency_contact
-        })
+        }
         
-        save_users(users)
-        return users[user_id]
+        # Update user in database
+        success = await update_user_db(user_id, update_data)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update user")
+        
+        # Return updated user profile
+        updated_user = await get_user_by_id_db(user_id)
+        return updated_user
         
     except HTTPException:
         raise
@@ -1356,15 +1316,10 @@ async def delete_user(user_id: str):
     """
     try:
         # Check if user exists first
-        if USE_SUPABASE:
-            db = get_database()
-            user = await db.get_user_by_id(user_id)
-            if not user:
-                raise HTTPException(status_code=404, detail="User not found")
-        else:
-            users = load_users()
-            if user_id not in users:
-                raise HTTPException(status_code=404, detail="User not found")
+        db = get_database()
+        user = await db.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
         
         # Delete user using proper database function
         deleted = await delete_user_db(user_id)
@@ -1372,26 +1327,11 @@ async def delete_user(user_id: str):
             raise HTTPException(status_code=500, detail="Failed to delete user from database")
         
         # Also delete user's chat sessions
-        if USE_SUPABASE:
-            db = get_database()
-            # Get all sessions for this user
-            sessions = await db.get_all_sessions()
-            for session in sessions.get("sessions", []):
-                if session.get("user_id") == user_id:
-                    await db.delete_session(session["session_id"])
-        else:
-            # File-based fallback for chat sessions
-            chat_data = load_chat_history()
-            for project_id in chat_data:
-                sessions_to_delete = []
-                for session_id, session in chat_data[project_id].items():
-                    if session.get("user_id") == user_id:
-                        sessions_to_delete.append(session_id)
-                
-                for session_id in sessions_to_delete:
-                    del chat_data[project_id][session_id]
-            
-            save_chat_history(chat_data)
+        # Get all sessions for this user
+        sessions = await db.get_all_sessions()
+        for session in sessions.get("sessions", []):
+            if session.get("user_id") == user_id:
+                await db.delete_session(session["session_id"])
         
         return {"message": "User and associated chat sessions deleted successfully"}
         
@@ -1486,10 +1426,11 @@ async def get_chat_history():
         dict: All chat sessions
     """
     try:
-        chat_history = load_chat_history()
+        # Use database to get all sessions
+        sessions_data = await get_all_sessions_db()
         return {
             "success": True,
-            "sessions": chat_history.get("sessions", [])
+            "sessions": sessions_data.get("sessions", [])
         }
     except Exception as e:
         logger.error(f"Error getting chat history: {str(e)}")
@@ -1507,10 +1448,8 @@ async def get_session_details(session_id: str):
         dict: Session details
     """
     try:
-        chat_history = load_chat_history()
-        sessions = chat_history.get("sessions", [])
-        
-        session = next((s for s in sessions if s["session_id"] == session_id), None)
+        # Use database to get session
+        session = await get_session_by_id_db(session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
             
@@ -1536,18 +1475,12 @@ async def delete_session(session_id: str):
         dict: Success message
     """
     try:
-        chat_history = load_chat_history()
-        sessions = chat_history.get("sessions", [])
+        # Use database to delete session
+        db = get_database()
+        success = await db.delete_session(session_id)
         
-        # Find and remove the session
-        original_count = len(sessions)
-        chat_history["sessions"] = [s for s in sessions if s["session_id"] != session_id]
-        
-        if len(chat_history["sessions"]) == original_count:
+        if not success:
             raise HTTPException(status_code=404, detail="Session not found")
-        
-        # Save updated history
-        save_chat_history(chat_history)
         
         return {
             "success": True,
@@ -1572,22 +1505,12 @@ async def update_session(session_id: str, update_data: dict):
         dict: Updated session
     """
     try:
-        chat_history = load_chat_history()
-        sessions = chat_history.get("sessions", [])
+        # Use database to update session
+        db = get_database()
+        success = await db.update_session(session_id, update_data)
         
-        # Find and update the session
-        session_found = False
-        for session in sessions:
-            if session["session_id"] == session_id:
-                session.update(update_data)
-                session_found = True
-                break
-        
-        if not session_found:
+        if not success:
             raise HTTPException(status_code=404, detail="Session not found")
-        
-        # Save updated history
-        save_chat_history(chat_history)
         
         return {
             "success": True,
