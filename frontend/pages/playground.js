@@ -59,7 +59,8 @@ export default function Playground() {
 
   const loadSessionById = async (sessionId) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/chat/session/${sessionId}`);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://medical-ai-chatbot-backend.onrender.com';
+      const response = await fetch(`${API_URL}/api/chat/session/${sessionId}`);
       if (response.ok) {
         const data = await response.json();
         const session = data.session;
@@ -103,7 +104,8 @@ export default function Playground() {
     setInput('');
 
     try {
-      const response = await fetch(`http://localhost:8000/api/chat/default`, {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://medical-ai-chatbot-backend.onrender.com';
+      const response = await fetch(`${API_URL}/api/chat/default`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

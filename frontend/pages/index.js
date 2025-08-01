@@ -25,7 +25,7 @@ export default function Home() {
 
   const loadStats = async () => {
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://medical-ai-chatbot-backend.onrender.com';
       const response = await fetch(`${API_URL}/api/projects/main/stats`);
       if (response.ok) {
         const data = await response.json();

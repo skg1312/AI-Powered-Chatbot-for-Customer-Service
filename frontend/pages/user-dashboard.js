@@ -38,7 +38,8 @@ export default function UserDashboard() {
 
   const loadUserSessions = async (userId) => {
     try {
-      const response = await fetch('http://localhost:8000/api/chat/history');
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://medical-ai-chatbot-backend.onrender.com';
+      const response = await fetch(`${API_URL}/api/chat/history`);
       if (response.ok) {
         const data = await response.json();
         // Filter sessions for current user
@@ -74,7 +75,8 @@ export default function UserDashboard() {
   const deleteSession = async (sessionId) => {
     if (confirm('Are you sure you want to delete this chat session?')) {
       try {
-        const response = await fetch(`http://localhost:8000/api/chat/session/${sessionId}`, {
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://medical-ai-chatbot-backend.onrender.com';
+        const response = await fetch(`${API_URL}/api/chat/session/${sessionId}`, {
           method: 'DELETE'
         });
         if (response.ok) {

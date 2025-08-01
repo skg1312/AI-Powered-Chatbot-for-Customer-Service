@@ -53,7 +53,7 @@ export default function ChatWidget() {
     setIsLoading(true);
 
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://medical-ai-chatbot-backend.onrender.com';
       const response = await fetch(`${API_URL}/api/chat/main`, {
         method: 'POST',
         headers: {

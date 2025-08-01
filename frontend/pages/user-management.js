@@ -31,7 +31,8 @@ export default function UserManagement() {
 
   const loadUsers = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/users');
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://medical-ai-chatbot-backend.onrender.com';
+      const response = await fetch(`${API_URL}/api/users`);
       if (response.ok) {
         const data = await response.json();
         setUsers(data.users);
@@ -49,7 +50,8 @@ export default function UserManagement() {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/users/${userId}`, {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://medical-ai-chatbot-backend.onrender.com';
+      const response = await fetch(`${API_URL}/api/users/${userId}`, {
         method: 'DELETE'
       });
       
@@ -87,7 +89,8 @@ export default function UserManagement() {
     e.preventDefault();
     
     try {
-      const response = await fetch(`http://localhost:8000/api/users/${selectedUser.user_id}`, {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://medical-ai-chatbot-backend.onrender.com';
+      const response = await fetch(`${API_URL}/api/users/${selectedUser.user_id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

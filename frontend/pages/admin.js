@@ -56,7 +56,8 @@ export default function AdminPanel() {
 
   const loadConfiguration = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/projects/main/config');
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://medical-ai-chatbot-backend.onrender.com';
+      const response = await fetch(`${API_URL}/api/projects/main/config`);
       if (response.ok) {
         const data = await response.json();
         setConfig({
@@ -74,7 +75,8 @@ export default function AdminPanel() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const response = await fetch('http://localhost:8000/api/projects/main/config', {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://medical-ai-chatbot-backend.onrender.com';
+      const response = await fetch(`${API_URL}/api/projects/main/config`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

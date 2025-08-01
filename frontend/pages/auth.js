@@ -35,7 +35,7 @@ export default function Auth() {
     setSuccess('');
 
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://medical-ai-chatbot-backend.onrender.com';
       const endpoint = isLogin ? '/api/users/login' : '/api/users/register';
       const payload = isLogin 
         ? { email: formData.email, password: formData.password }

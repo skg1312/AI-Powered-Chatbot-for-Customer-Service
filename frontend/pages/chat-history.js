@@ -27,7 +27,8 @@ export default function ChatHistory() {
 
   const loadChatHistory = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/projects/main/chat-history');
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://medical-ai-chatbot-backend.onrender.com';
+      const response = await fetch(`${API_URL}/api/projects/main/chat-history`);
       if (response.ok) {
         const data = await response.json();
         setSessions(data.sessions);
@@ -45,7 +46,8 @@ export default function ChatHistory() {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/projects/main/chat-history/${sessionId}`, {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://medical-ai-chatbot-backend.onrender.com';
+      const response = await fetch(`${API_URL}/api/projects/main/chat-history/${sessionId}`, {
         method: 'DELETE'
       });
       

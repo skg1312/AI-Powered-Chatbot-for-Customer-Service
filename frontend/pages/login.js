@@ -36,7 +36,8 @@ export default function UserLogin() {
 
     try {
       // For demo purposes, we'll check if user exists by email
-      const response = await fetch('http://localhost:8000/api/users');
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://medical-ai-chatbot-backend.onrender.com';
+      const response = await fetch(`${API_URL}/api/users`);
       if (response.ok) {
         const data = await response.json();
         const user = data.users.find(u => u.email === loginData.email);
