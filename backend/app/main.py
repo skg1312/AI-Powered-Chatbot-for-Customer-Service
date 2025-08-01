@@ -6,6 +6,7 @@ Now integrated with Supabase for scalable data storage.
 
 import json
 import os
+import requests
 from fastapi import FastAPI, HTTPException, File, UploadFile, Depends, status, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -167,7 +168,6 @@ async def api_status(request: Request):
     
     # Check HuggingFace API
     try:
-        import requests
         hf_token = config.get_hf_token()
         headers = {"Authorization": f"Bearer {hf_token}"}
         
@@ -595,8 +595,26 @@ def authenticate_user(email: str, password: str):
 def get_user_profile(user_id: str):
     """Get user profile by user_id."""
     try:
+        # Load users from main users file
         users = load_users()
-        return users.get(user_id)
+        
+        # Also load users from authentication fallback file
+        auth_file = os.path.join(os.path.dirname(__file__), "database", "users_with_auth.json")
+        if os.path.exists(auth_file):
+            try:
+                with open(auth_file, 'r') as f:
+                    auth_users = json.load(f)
+                # Merge auth users into main users (auth users take precedence)
+                users.update(auth_users)
+            except Exception as e:
+                logger.error(f"Error loading auth users file: {str(e)}")
+        
+        user_profile = users.get(user_id)
+        if user_profile:
+            # Remove password hash from response
+            user_response = {k: v for k, v in user_profile.items() if k != "password_hash"}
+            return user_response
+        return None
     except Exception as e:
         logger.error(f"Error getting user profile: {str(e)}")
         return None
@@ -651,17 +669,82 @@ async def get_database_stats():
     """Get system statistics from database."""
     if USE_SUPABASE:
         db = get_database()
-        return await db.get_statistics()
+        try:
+            # Get statistics from Supabase
+            users_data = await db.get_all_users()
+            sessions_data = await db.get_all_sessions()
+            config_data = await db.get_project_config("main")
+            
+            if not config_data:
+                config_data = get_default_config("main")
+            
+            # If Supabase has no users but we have file-based users, use file fallback
+            if users_data.get("total_users", 0) == 0:
+                # Check if there are users in the file-based system
+                file_users_data = get_all_users()
+                if file_users_data.get("total_users", 0) > 0:
+                    logger.info("Using file-based stats since Supabase has no users but files do")
+                    # Use file-based stats
+                    chat_history = load_chat_history()
+                    configs = load_project_configs()
+                    project_config = configs.get("main", {})
+                    
+                    total_sessions = 0
+                    for project_sessions in chat_history.values():
+                        if isinstance(project_sessions, dict):
+                            total_sessions += len(project_sessions)
+                    
+                    return {
+                        "total_users": file_users_data.get("total_users", 0),
+                        "total_sessions": total_sessions,
+                        "knowledge_base_files": len(project_config.get("knowledge_base_files", [])),
+                        "curated_websites": len(project_config.get("curated_sites", [])),
+                        "active_agents": 4
+                    }
+            
+            return {
+                "total_users": users_data.get("total_users", 0),
+                "total_sessions": len(sessions_data.get("sessions", [])),
+                "knowledge_base_files": len(config_data.get("knowledge_base_files", [])),
+                "curated_websites": len(config_data.get("curated_sites", [])),
+                "active_agents": 4
+            }
+        except Exception as e:
+            logger.error(f"Error getting Supabase stats: {str(e)}")
+            # Fallback to file-based stats
+            users_data = get_all_users()
+            chat_history = load_chat_history()
+            configs = load_project_configs()
+            project_config = configs.get("main", {})
+            
+            total_sessions = 0
+            for project_sessions in chat_history.values():
+                if isinstance(project_sessions, dict):
+                    total_sessions += len(project_sessions)
+            
+            return {
+                "total_users": users_data.get("total_users", 0),
+                "total_sessions": total_sessions,
+                "knowledge_base_files": len(project_config.get("knowledge_base_files", [])),
+                "curated_websites": len(project_config.get("curated_sites", [])),
+                "active_agents": 4
+            }
     else:
         # File-based fallback
-        users_data = load_users()
+        users_data = get_all_users()
         chat_history = load_chat_history()
         configs = load_project_configs()
         project_config = configs.get("main", {})
         
+        # Calculate total sessions across all projects
+        total_sessions = 0
+        for project_sessions in chat_history.values():
+            if isinstance(project_sessions, dict):
+                total_sessions += len(project_sessions)
+        
         return {
-            "total_users": len(users_data),
-            "total_sessions": len(chat_history.get("sessions", [])),
+            "total_users": users_data.get("total_users", 0),
+            "total_sessions": total_sessions,
             "knowledge_base_files": len(project_config.get("knowledge_base_files", [])),
             "curated_websites": len(project_config.get("curated_sites", [])),
             "active_agents": 4
@@ -671,18 +754,50 @@ async def get_all_users_db():
     """Get all users from database."""
     if USE_SUPABASE:
         db = get_database()
-        return await db.get_all_users()
+        try:
+            supabase_users = await db.get_all_users()
+            # If Supabase has no users but we have file-based users, use file fallback
+            if supabase_users.get("total_users", 0) == 0:
+                file_users_data = get_all_users()
+                if file_users_data.get("total_users", 0) > 0:
+                    logger.info("Using file-based users since Supabase has no users but files do")
+                    return file_users_data
+            return supabase_users
+        except Exception as e:
+            logger.error(f"Error getting Supabase users, falling back to file: {str(e)}")
+            return get_all_users()
     else:
         # File-based fallback
         return get_all_users()
 
 async def get_user_by_id_db(user_id: str):
     """Get user by ID from database."""
+    logger.info(f"get_user_by_id_db called for user_id: {user_id}, USE_SUPABASE: {USE_SUPABASE}")
+    
     if USE_SUPABASE:
         db = get_database()
-        return await db.get_user_by_id(user_id)
+        try:
+            logger.info(f"Trying Supabase for user: {user_id}")
+            supabase_user = await db.get_user_by_id(user_id)
+            logger.info(f"Supabase user result: {supabase_user}")
+            
+            if not supabase_user:
+                # Try file-based fallback
+                logger.info(f"Supabase returned None, trying file fallback for user: {user_id}")
+                file_user = get_user_profile(user_id)
+                logger.info(f"File user result: {file_user}")
+                if file_user:
+                    logger.info(f"Using file-based user for {user_id} since not in Supabase")
+                    return file_user
+            return supabase_user
+        except Exception as e:
+            logger.error(f"Error getting Supabase user {user_id}, falling back to file: {str(e)}")
+            file_user = get_user_profile(user_id)
+            logger.info(f"File fallback result: {file_user}")
+            return file_user
     else:
         # File-based fallback
+        logger.info(f"Using file-based storage for user: {user_id}")
         return get_user_profile(user_id)
 
 async def get_user_by_email_db(email: str):
@@ -700,10 +815,20 @@ async def get_user_by_email_db(email: str):
 
 async def create_user_db(user_data: Dict[str, Any]) -> str:
     """Create user in database."""
+    logger.info(f"create_user_db called with USE_SUPABASE: {USE_SUPABASE}")
+    
     if USE_SUPABASE:
+        logger.info("Using Supabase to create user")
         db = get_database()
-        return await db.create_user(user_data)
+        try:
+            result = await db.create_user(user_data)
+            logger.info(f"Supabase create_user result: {result}")
+            return result
+        except Exception as e:
+            logger.error(f"Supabase create_user failed: {str(e)}")
+            raise
     else:
+        logger.info("Using file-based storage to create user")
         # File-based fallback
         from datetime import datetime
         users = load_users()
@@ -712,7 +837,8 @@ async def create_user_db(user_data: Dict[str, Any]) -> str:
         user_data["last_active"] = datetime.now().isoformat()
         user_data["total_sessions"] = 0
         users[user_id] = user_data
-        save_users(users)
+        save_result = save_users(users)
+        logger.info(f"File-based save_users result: {save_result}")
         return user_id
 
 async def update_user_db(user_id: str, update_data: Dict[str, Any]) -> bool:
@@ -1243,6 +1369,31 @@ async def get_project_stats(project_id: str):
         logger.error(f"Error getting stats: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get statistics")
 
+@app.get("/api/stats")
+async def get_stats():
+    """
+    Get system statistics including user count, sessions, files, etc.
+    
+    Returns:
+        dict: System statistics
+    """
+    try:
+        logger.info(f"Getting stats, USE_SUPABASE: {USE_SUPABASE}")
+        stats = await get_database_stats()
+        logger.info(f"Stats retrieved: {stats}")
+        return stats
+        
+    except Exception as e:
+        logger.error(f"Error getting stats: {str(e)}")
+        # Return default stats on error
+        return {
+            "total_users": 0,
+            "total_sessions": 0,
+            "knowledge_base_files": 0,
+            "curated_websites": 0,
+            "active_agents": 4
+        }
+
 @app.get("/api/projects/{project_id}/chat-history", response_model=ChatHistoryResponse)
 async def get_project_chat_history(project_id: str, user_id: str = None, limit: int = 50):
     """
@@ -1338,9 +1489,12 @@ async def register_new_user(user_data: UserRegistration):
     try:
         from datetime import datetime
         
+        logger.info(f"Attempting to register user: {user_data.email}")
+        
         # Check if user already exists by email
         existing_user = await get_user_by_email_db(user_data.email)
         if existing_user:
+            logger.warning(f"User already exists: {user_data.email}")
             return {
                 "user_id": existing_user["user_id"],
                 "message": "User already exists",
@@ -1352,6 +1506,8 @@ async def register_new_user(user_data: UserRegistration):
         
         # Hash the password
         hashed_password = hash_password(user_data.password)
+        
+        logger.info(f"Generated user ID: {user_id}, USE_SUPABASE: {USE_SUPABASE}")
         
         # Prepare user data
         user_profile_data = {
@@ -1365,11 +1521,14 @@ async def register_new_user(user_data: UserRegistration):
             "emergency_contact": user_data.emergency_contact
         }
         
+        logger.info(f"Creating user in database...")
+        
         # Create user in database
         created_user_id = await create_user_db(user_profile_data)
         user_profile = await get_user_by_id_db(created_user_id)
         
-        logger.info(f"Registered new user: {created_user_id}")
+        logger.info(f"Successfully registered new user: {created_user_id}")
+        logger.info(f"User profile retrieved: {user_profile}")
         
         return {
             "user_id": created_user_id,
@@ -1466,9 +1625,11 @@ async def get_user(user_id: str):
         dict: User profile
     """
     try:
-        user_profile = get_user_profile(user_id)
+        user_profile = await get_user_by_id_db(user_id)
         if user_profile:
-            return user_profile
+            # Remove password hash from response
+            user_response = {k: v for k, v in user_profile.items() if k != "password_hash"}
+            return user_response
         else:
             raise HTTPException(status_code=404, detail="User not found")
             
