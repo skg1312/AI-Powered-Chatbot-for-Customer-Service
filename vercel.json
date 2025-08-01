@@ -1,31 +1,17 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "frontend/package.json",
-      "use": "@vercel/next",
-      "config": {
-        "distDir": ".next"
-      }
-    }
-  ],
-  "functions": {
-    "frontend/pages/api/*.js": {
-      "maxDuration": 30
-    }
-  },
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "https://medical-ai-chatbot-backend.onrender.com/api/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "frontend/$1"
-    }
-  ],
+  "buildCommand": "cd frontend && npm run build",
+  "outputDirectory": "frontend/.next",
+  "installCommand": "cd frontend && npm install",
+  "framework": "nextjs",
+  "rootDirectory": "frontend",
   "env": {
     "NEXT_PUBLIC_API_URL": "https://medical-ai-chatbot-backend.onrender.com",
     "NEXT_PUBLIC_ENVIRONMENT": "production"
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://medical-ai-chatbot-backend.onrender.com/api/$1"
+    }
+  ]
 }
