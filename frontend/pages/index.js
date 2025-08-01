@@ -227,12 +227,12 @@ export default function Home() {
           </button>
 
           <button
-            onClick={() => router.push('/chat-history')}
+            onClick={() => router.push('/playground')}
             className="bg-purple-600 hover:bg-purple-700 text-white rounded-xl p-8 text-center transition-colors group"
           >
-            <History className="h-12 w-12 mx-auto mb-4 group-hover:scale-110 transition-transform" />
-            <h3 className="text-xl font-bold mb-2">Chat History</h3>
-            <p className="text-purple-100">View public conversation sessions</p>
+            <MessageCircle className="h-12 w-12 mx-auto mb-4 group-hover:scale-110 transition-transform" />
+            <h3 className="text-xl font-bold mb-2">Chat Playground</h3>
+            <p className="text-purple-100">Start chatting with the medical AI assistant</p>
           </button>
 
           <button
