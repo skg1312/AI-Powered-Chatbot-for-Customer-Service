@@ -47,6 +47,7 @@ else:
         "http://127.0.0.1:8080",
         "https://*.vercel.app",
         "https://ai-powered-chatbot-for-customer-service-mdmc7w1y8.vercel.app",
+        "https://ai-powered-chatbot-for-customer-ser.vercel.app",  # Current Vercel domain
         "https://medical-ai-chatbot.vercel.app",
         "https://medical-ai-chatbot-frontend.vercel.app",
         "null"  # Allow file:// protocol for local testing
@@ -130,8 +131,11 @@ async def root():
 
 # Comprehensive API status endpoint
 @app.get("/api/status")
-async def api_status():
+async def api_status(request: Request):
     """Comprehensive API status check for all services"""
+    # Get origin for CORS
+    origin = request.headers.get('origin', '')
+    
     status = {
         "service": "Medical AI Chatbot Backend",
         "timestamp": datetime.utcnow().isoformat(),
@@ -282,19 +286,41 @@ async def api_status():
         }
         status["overall_status"] = "degraded"
     
-    return status
+    # Create response with explicit CORS headers
+    from fastapi import Response
+    response = Response(
+        content=json.dumps(status),
+        media_type="application/json"
+    )
+    
+    # Add CORS headers explicitly
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    
+    return response
 
 @app.options("/{full_path:path}")
 async def preflight_handler(request: Request, full_path: str):
-    """Handle CORS preflight requests"""
+    """Handle CORS preflight requests for all endpoints"""
     response = Response()
     origin = request.headers.get('origin')
     
-    if origin:
+    # Allow the specific Vercel domain
+    if origin and (
+        origin == "https://ai-powered-chatbot-for-customer-ser.vercel.app" or
+        origin.endswith(".vercel.app") or 
+        "*" in ALLOWED_ORIGINS
+    ):
         response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "*"
-        response.headers["Access-Control-Allow-Credentials"] = "true"
+    else:
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Max-Age"] = "86400"
     
     return response
 
