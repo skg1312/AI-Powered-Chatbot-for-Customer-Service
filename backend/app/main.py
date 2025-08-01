@@ -64,18 +64,11 @@ from app.agents.router import RouterAgent
 from app.agents.rag_agent import RAGAgent
 from app.agents.web_search_agent import WebSearchAgent
 
-# Import database handler based on configuration
-DATABASE_TYPE = os.getenv('DATABASE_TYPE', 'file')
-
-if DATABASE_TYPE == 'supabase':
-    from app.database.supabase_db import get_database
-    USE_SUPABASE = True
-    logger = logging.getLogger(__name__)
-    logger.info("🔄 Using Supabase database")
-else:
-    USE_SUPABASE = False
-    logger = logging.getLogger(__name__)
-    logger.info("🔄 Using file-based database")
+# Force Supabase database only - no local file storage
+from app.database.supabase_db import get_database
+USE_SUPABASE = True
+logger = logging.getLogger(__name__)
+logger.info("🔄 Using Supabase database ONLY - no local file storage")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -372,28 +365,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-# Helper functions for configuration persistence
-def load_project_configs():
-    """Load project configurations from file."""
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"Error loading config file: {str(e)}")
-            return {}
-    return {}
-
-def save_project_configs(configs):
-    """Save project configurations to file."""
-    try:
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(configs, f, indent=2)
-        return True
-    except Exception as e:
-        logger.error(f"Error saving config file: {str(e)}")
-        return False
-
+# Helper function for default configuration
 def get_default_config(project_id: str):
     """Get default configuration for a project."""
     return {
@@ -408,86 +380,91 @@ def get_default_config(project_id: str):
         "knowledge_base_files": []
     }
 
-# Helper functions for chat history persistence
-def load_chat_history():
-    """Load chat history from file."""
-    if os.path.exists(CHAT_HISTORY_FILE):
-        try:
-            with open(CHAT_HISTORY_FILE, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"Error loading chat history file: {str(e)}")
-            return {}
-    return {}
 
-def save_chat_history(chat_data):
-    """Save chat history to file."""
-    try:
-        with open(CHAT_HISTORY_FILE, 'w') as f:
-            json.dump(chat_data, f, indent=2)
-        return True
-    except Exception as e:
-        logger.error(f"Error saving chat history file: {str(e)}")
-        return False
 
-def save_chat_message(project_id: str, session_id: str, user_id: str, user_message: str, bot_response: str, agent_used: str):
-    """Save a chat message exchange to history."""
+async def save_chat_message(project_id: str, session_id: str, user_id: str, user_message: str, bot_response: str, agent_used: str):
+    """Save a chat message exchange to Supabase only."""
     try:
         from datetime import datetime
         
-        chat_data = load_chat_history()
-        
-        if project_id not in chat_data:
-            chat_data[project_id] = {}
-        
         timestamp = datetime.now().isoformat()
         
-        if session_id not in chat_data[project_id]:
-            # Create new session
-            chat_data[project_id][session_id] = {
-                "session_id": session_id,
-                "user_id": user_id,
-                "project_id": project_id,
-                "messages": [],
-                "created_at": timestamp,
-                "updated_at": timestamp
-            }
-        
-        # Add user message
-        chat_data[project_id][session_id]["messages"].append({
+        # Create message objects
+        user_message_obj = {
             "role": "user",
             "content": user_message,
             "timestamp": timestamp,
             "agent_used": None
-        })
+        }
         
-        # Add bot response
-        chat_data[project_id][session_id]["messages"].append({
+        bot_message_obj = {
             "role": "assistant",
             "content": bot_response,
             "timestamp": timestamp,
             "agent_used": agent_used
-        })
+        }
         
-        # Update session timestamp
-        chat_data[project_id][session_id]["updated_at"] = timestamp
+        # Use Supabase database ONLY
+        db = get_database()
         
-        save_chat_history(chat_data)
-        logger.info(f"Saved chat message for session {session_id}")
+        # Check if user exists in Supabase, if not set user_id to None to avoid foreign key constraint
+        user_id_for_db = None
+        if user_id:
+            existing_user = await db.get_user_by_id(user_id)
+            if existing_user:
+                user_id_for_db = user_id
+            else:
+                logger.info(f"User {user_id} not found in Supabase, saving session without user_id reference")
+        
+        # Check if session exists
+        existing_session = await db.get_session_by_id(session_id)
+        
+        if existing_session:
+            # Update existing session with new messages
+            current_messages = existing_session.get("messages", [])
+            current_messages.extend([user_message_obj, bot_message_obj])
+            
+            await db.update_session(session_id, {
+                "messages": current_messages,
+                "updated_at": timestamp
+            })
+        else:
+            # Create new session
+            session_data = {
+                "session_id": session_id,
+                "user_id": user_id_for_db,  # Use the validated user_id or None
+                "project_id": project_id,
+                "messages": [user_message_obj, bot_message_obj],
+                "title": user_message[:50] + "..." if len(user_message) > 50 else user_message,
+                "status": "active",
+                "created_at": timestamp,
+                "updated_at": timestamp
+            }
+            
+            await db.create_chat_session(session_data)
+        
+        logger.info(f"Saved chat message to Supabase for session {session_id}")
         
     except Exception as e:
-        logger.error(f"Error saving chat message: {str(e)}")
+        logger.error(f"Error saving chat message to Supabase: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to save chat message")
 
-def get_chat_history(project_id: str, user_id: str = None, limit: int = 50):
-    """Get chat history for a project and optionally for a specific user."""
+
+
+async def get_chat_history(project_id: str, user_id: str = None, limit: int = 50):
+    """Get chat history for a project from Supabase only."""
     try:
-        chat_data = load_chat_history()
-        project_sessions = chat_data.get(project_id, {})
+        db = get_database()
         
-        sessions = []
-        for session_data in project_sessions.values():
-            if user_id is None or session_data.get("user_id") == user_id:
-                sessions.append(session_data)
+        if user_id:
+            # Get sessions for specific user
+            sessions = await db.get_user_sessions(user_id)
+            # Filter by project_id
+            sessions = [s for s in sessions if s.get("project_id") == project_id]
+        else:
+            # Get all sessions and filter by project_id
+            all_sessions_data = await db.get_all_sessions()
+            sessions = [s for s in all_sessions_data.get("sessions", []) if s.get("project_id") == project_id]
         
         # Sort by updated_at timestamp (newest first)
         sessions.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
@@ -501,391 +478,93 @@ def get_chat_history(project_id: str, user_id: str = None, limit: int = 50):
         }
         
     except Exception as e:
-        logger.error(f"Error getting chat history: {str(e)}")
-        return {"sessions": [], "total_sessions": 0}
+        logger.error(f"Error getting chat history from Supabase: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get chat history")
 
-# Helper functions for user management
-def load_users():
-    """Load users from file."""
-    if os.path.exists(USERS_FILE):
-        try:
-            with open(USERS_FILE, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"Error loading users file: {str(e)}")
-            return {}
-    return {}
 
-def save_users(users_data):
-    """Save users to file."""
-    try:
-        with open(USERS_FILE, 'w') as f:
-            json.dump(users_data, f, indent=2)
-        return True
-    except Exception as e:
-        logger.error(f"Error saving users file: {str(e)}")
-        return False
-
-def register_user(user_data) -> str:
-    """Register a new user and return user_id."""
-    try:
-        from datetime import datetime
-        
-        users = load_users()
-        
-        # Check if email already exists
-        for existing_user in users.values():
-            if existing_user.get("email") == user_data.email:
-                raise HTTPException(status_code=400, detail="Email already registered")
-        
-        # Generate unique user ID
-        user_id = f"user_{user_data.name.lower().replace(' ', '_')}_{int(datetime.now().timestamp())}"
-        
-        timestamp = datetime.now().isoformat()
-        
-        # Hash the password
-        hashed_password = hash_password(user_data.password)
-        
-        # Create user profile
-        user_profile = {
-            "user_id": user_id,
-            "name": user_data.name,
-            "email": user_data.email,
-            "password_hash": hashed_password,
-            "phone": user_data.phone,
-            "age": user_data.age,
-            "medical_conditions": user_data.medical_conditions,
-            "emergency_contact": user_data.emergency_contact,
-            "created_at": timestamp,
-            "last_active": timestamp,
-            "total_sessions": 0
-        }
-        
-        users[user_id] = user_profile
-        save_users(users)
-        
-        logger.info(f"Registered new user: {user_id}")
-        return user_id
-        
-    except Exception as e:
-        logger.error(f"Error registering user: {str(e)}")
-        raise
-
-def authenticate_user(email: str, password: str):
-    """Authenticate user with email and password."""
-    try:
-        users = load_users()
-        
-        # Find user by email
-        for user_data in users.values():
-            if user_data.get("email") == email:
-                if verify_password(password, user_data.get("password_hash", "")):
-                    # Update last active
-                    user_data["last_active"] = datetime.now().isoformat()
-                    save_users(users)
-                    return user_data
-                else:
-                    return None
-        return None
-        
-    except Exception as e:
-        logger.error(f"Error authenticating user: {str(e)}")
-        return None
-
-def get_user_profile(user_id: str):
-    """Get user profile by user_id."""
-    try:
-        # Load users from main users file
-        users = load_users()
-        
-        # Also load users from authentication fallback file
-        auth_file = os.path.join(os.path.dirname(__file__), "database", "users_with_auth.json")
-        if os.path.exists(auth_file):
-            try:
-                with open(auth_file, 'r') as f:
-                    auth_users = json.load(f)
-                # Merge auth users into main users (auth users take precedence)
-                users.update(auth_users)
-            except Exception as e:
-                logger.error(f"Error loading auth users file: {str(e)}")
-        
-        user_profile = users.get(user_id)
-        if user_profile:
-            # Remove password hash from response
-            user_response = {k: v for k, v in user_profile.items() if k != "password_hash"}
-            return user_response
-        return None
-    except Exception as e:
-        logger.error(f"Error getting user profile: {str(e)}")
-        return None
-
-def update_user_activity(user_id: str):
-    """Update user's last active timestamp and session count."""
-    try:
-        from datetime import datetime
-        
-        users = load_users()
-        if user_id in users:
-            users[user_id]["last_active"] = datetime.now().isoformat()
-            users[user_id]["total_sessions"] = users[user_id].get("total_sessions", 0) + 1
-            save_users(users)
-            
-    except Exception as e:
-        logger.error(f"Error updating user activity: {str(e)}")
-
-def get_all_users():
-    """Get all registered users."""
-    try:
-        # Load users from main users file
-        users = load_users()
-        
-        # Also load users from authentication fallback file
-        auth_file = os.path.join(os.path.dirname(__file__), "database", "users_with_auth.json")
-        if os.path.exists(auth_file):
-            try:
-                with open(auth_file, 'r') as f:
-                    auth_users = json.load(f)
-                # Merge auth users into main users (auth users take precedence)
-                users.update(auth_users)
-            except Exception as e:
-                logger.error(f"Error loading auth users file: {str(e)}")
-        
-        user_list = list(users.values())
-        
-        # Sort by last_active (most recent first)
-        user_list.sort(key=lambda x: x.get("last_active", ""), reverse=True)
-        
-        return {
-            "users": user_list,
-            "total_users": len(user_list)
-        }
-        
-    except Exception as e:
-        logger.error(f"Error getting all users: {str(e)}")
-        return {"users": [], "total_users": 0}
 
 # Database abstraction layer for Supabase integration
 async def get_database_stats():
-    """Get system statistics from database."""
-    if USE_SUPABASE:
-        db = get_database()
-        try:
-            # Get statistics from Supabase
-            users_data = await db.get_all_users()
-            sessions_data = await db.get_all_sessions()
-            config_data = await db.get_project_config("main")
-            
-            if not config_data:
-                config_data = get_default_config("main")
-            
-            # If Supabase has no users but we have file-based users, use file fallback
-            if users_data.get("total_users", 0) == 0:
-                # Check if there are users in the file-based system
-                file_users_data = get_all_users()
-                if file_users_data.get("total_users", 0) > 0:
-                    logger.info("Using file-based stats since Supabase has no users but files do")
-                    # Use file-based stats
-                    chat_history = load_chat_history()
-                    configs = load_project_configs()
-                    project_config = configs.get("main", {})
-                    
-                    total_sessions = 0
-                    for project_sessions in chat_history.values():
-                        if isinstance(project_sessions, dict):
-                            total_sessions += len(project_sessions)
-                    
-                    return {
-                        "total_users": file_users_data.get("total_users", 0),
-                        "total_sessions": total_sessions,
-                        "knowledge_base_files": len(project_config.get("knowledge_base_files", [])),
-                        "curated_websites": len(project_config.get("curated_sites", [])),
-                        "active_agents": 4
-                    }
-            
-            return {
-                "total_users": users_data.get("total_users", 0),
-                "total_sessions": len(sessions_data.get("sessions", [])),
-                "knowledge_base_files": len(config_data.get("knowledge_base_files", [])),
-                "curated_websites": len(config_data.get("curated_sites", [])),
-                "active_agents": 4
-            }
-        except Exception as e:
-            logger.error(f"Error getting Supabase stats: {str(e)}")
-            # Fallback to file-based stats
-            users_data = get_all_users()
-            chat_history = load_chat_history()
-            configs = load_project_configs()
-            project_config = configs.get("main", {})
-            
-            total_sessions = 0
-            for project_sessions in chat_history.values():
-                if isinstance(project_sessions, dict):
-                    total_sessions += len(project_sessions)
-            
-            return {
-                "total_users": users_data.get("total_users", 0),
-                "total_sessions": total_sessions,
-                "knowledge_base_files": len(project_config.get("knowledge_base_files", [])),
-                "curated_websites": len(project_config.get("curated_sites", [])),
-                "active_agents": 4
-            }
-    else:
-        # File-based fallback
-        users_data = get_all_users()
-        chat_history = load_chat_history()
-        configs = load_project_configs()
-        project_config = configs.get("main", {})
+    """Get system statistics from Supabase only."""
+    db = get_database()
+    try:
+        # Get statistics from Supabase
+        users_data = await db.get_all_users()
+        sessions_data = await db.get_all_sessions()
+        config_data = await db.get_project_config("main")
         
-        # Calculate total sessions across all projects
-        total_sessions = 0
-        for project_sessions in chat_history.values():
-            if isinstance(project_sessions, dict):
-                total_sessions += len(project_sessions)
+        if not config_data:
+            config_data = get_default_config("main")
         
         return {
             "total_users": users_data.get("total_users", 0),
-            "total_sessions": total_sessions,
-            "knowledge_base_files": len(project_config.get("knowledge_base_files", [])),
-            "curated_websites": len(project_config.get("curated_sites", [])),
+            "total_sessions": len(sessions_data.get("sessions", [])),
+            "knowledge_base_files": len(config_data.get("knowledge_base_files", [])),
+            "curated_websites": len(config_data.get("curated_sites", [])),
+            "active_agents": 4
+        }
+    except Exception as e:
+        logger.error(f"Error getting Supabase stats: {str(e)}")
+        # Return minimal stats on error
+        return {
+            "total_users": 0,
+            "total_sessions": 0,
+            "knowledge_base_files": 0,
+            "curated_websites": 4,  # Default curated sites count
             "active_agents": 4
         }
 
 async def get_all_users_db():
-    """Get all users from database."""
-    if USE_SUPABASE:
-        db = get_database()
-        try:
-            supabase_users = await db.get_all_users()
-            # If Supabase has no users but we have file-based users, use file fallback
-            if supabase_users.get("total_users", 0) == 0:
-                file_users_data = get_all_users()
-                if file_users_data.get("total_users", 0) > 0:
-                    logger.info("Using file-based users since Supabase has no users but files do")
-                    return file_users_data
-            return supabase_users
-        except Exception as e:
-            logger.error(f"Error getting Supabase users, falling back to file: {str(e)}")
-            return get_all_users()
-    else:
-        # File-based fallback
-        return get_all_users()
+    """Get all users from Supabase only."""
+    db = get_database()
+    try:
+        return await db.get_all_users()
+    except Exception as e:
+        logger.error(f"Error getting Supabase users: {str(e)}")
+        return {"users": [], "total_users": 0}
 
 async def get_user_by_id_db(user_id: str):
-    """Get user by ID from database."""
-    logger.info(f"get_user_by_id_db called for user_id: {user_id}, USE_SUPABASE: {USE_SUPABASE}")
+    """Get user by ID from Supabase only."""
+    logger.info(f"get_user_by_id_db called for user_id: {user_id}")
     
-    if USE_SUPABASE:
-        db = get_database()
-        try:
-            logger.info(f"Trying Supabase for user: {user_id}")
-            supabase_user = await db.get_user_by_id(user_id)
-            logger.info(f"Supabase user result: {supabase_user}")
-            
-            if not supabase_user:
-                # Try file-based fallback
-                logger.info(f"Supabase returned None, trying file fallback for user: {user_id}")
-                file_user = get_user_profile(user_id)
-                logger.info(f"File user result: {file_user}")
-                if file_user:
-                    logger.info(f"Using file-based user for {user_id} since not in Supabase")
-                    return file_user
-            return supabase_user
-        except Exception as e:
-            logger.error(f"Error getting Supabase user {user_id}, falling back to file: {str(e)}")
-            file_user = get_user_profile(user_id)
-            logger.info(f"File fallback result: {file_user}")
-            return file_user
-    else:
-        # File-based fallback
-        logger.info(f"Using file-based storage for user: {user_id}")
-        return get_user_profile(user_id)
-
-async def get_user_by_email_db(email: str):
-    """Get user by email from database."""
-    if USE_SUPABASE:
-        db = get_database()
-        return await db.get_user_by_email(email)
-    else:
-        # File-based fallback
-        users = load_users()
-        for user in users.values():
-            if user.get("email") == email:
-                return user
+    db = get_database()
+    try:
+        logger.info(f"Getting user from Supabase: {user_id}")
+        supabase_user = await db.get_user_by_id(user_id)
+        logger.info(f"Supabase user result: {supabase_user}")
+        return supabase_user
+    except Exception as e:
+        logger.error(f"Error getting Supabase user {user_id}: {str(e)}")
         return None
 
+async def get_user_by_email_db(email: str):
+    """Get user by email from Supabase only."""
+    db = get_database()
+    return await db.get_user_by_email(email)
+
 async def create_user_db(user_data: Dict[str, Any]) -> str:
-    """Create user in database."""
-    logger.info(f"create_user_db called with USE_SUPABASE: {USE_SUPABASE}")
+    """Create user in Supabase only."""
+    logger.info(f"create_user_db called - Using Supabase only")
     
-    if USE_SUPABASE:
-        logger.info("Using Supabase to create user")
-        db = get_database()
-        try:
-            result = await db.create_user(user_data)
-            logger.info(f"Supabase create_user result: {result}")
-            return result
-        except Exception as e:
-            logger.error(f"Supabase create_user failed: {str(e)}")
-            raise
-    else:
-        logger.info("Using file-based storage to create user")
-        # File-based fallback
-        from datetime import datetime
-        users = load_users()
-        user_id = user_data["user_id"]
-        user_data["created_at"] = datetime.now().isoformat()
-        user_data["last_active"] = datetime.now().isoformat()
-        user_data["total_sessions"] = 0
-        users[user_id] = user_data
-        save_result = save_users(users)
-        logger.info(f"File-based save_users result: {save_result}")
-        return user_id
+    logger.info("Using Supabase to create user")
+    db = get_database()
+    try:
+        result = await db.create_user(user_data)
+        logger.info(f"Supabase create_user result: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"Supabase create_user failed: {str(e)}")
+        raise
 
 async def update_user_db(user_id: str, update_data: Dict[str, Any]) -> bool:
-    """Update user in database."""
-    if USE_SUPABASE:
-        db = get_database()
-        return await db.update_user(user_id, update_data)
-    else:
-        # File-based fallback
-        users = load_users()
-        if user_id in users:
-            users[user_id].update(update_data)
-            return save_users(users)
-        return False
+    """Update user in Supabase only."""
+    db = get_database()
+    return await db.update_user(user_id, update_data)
 
 async def delete_user_db(user_id: str) -> bool:
-    """Delete user from database."""
-    if USE_SUPABASE:
-        db = get_database()
-        return await db.delete_user(user_id)
-    else:
-        # File-based fallback - check both files
-        deleted = False
-        
-        # Check and delete from main users file
-        users = load_users()
-        if user_id in users:
-            del users[user_id]
-            save_users(users)
-            deleted = True
-        
-        # Check and delete from authentication fallback file
-        auth_file = os.path.join(os.path.dirname(__file__), "database", "users_with_auth.json")
-        if os.path.exists(auth_file):
-            try:
-                with open(auth_file, 'r') as f:
-                    auth_users = json.load(f)
-                
-                if user_id in auth_users:
-                    del auth_users[user_id]
-                    with open(auth_file, 'w') as f:
-                        json.dump(auth_users, f, indent=2)
-                    deleted = True
-            except Exception as e:
-                logger.error(f"Error deleting from auth file: {str(e)}")
-        
-        return deleted
+    """Delete user from Supabase only."""
+    db = get_database()
+    return await db.delete_user(user_id)
 
 async def get_all_sessions_db():
     """Get all chat sessions from database."""
@@ -908,26 +587,15 @@ async def get_session_by_id_db(session_id: str):
         return next((s for s in sessions if s["session_id"] == session_id), None)
 
 async def get_project_config_db(project_id: str):
-    """Get project configuration from database."""
-    if USE_SUPABASE:
-        db = get_database()
-        config = await db.get_project_config(project_id)
-        return config if config else get_default_config(project_id)
-    else:
-        # File-based fallback
-        configs = load_project_configs()
-        return configs.get(project_id, get_default_config(project_id))
+    """Get project configuration from Supabase only."""
+    db = get_database()
+    config = await db.get_project_config(project_id)
+    return config if config else get_default_config(project_id)
 
 async def update_project_config_db(project_id: str, config_data: Dict[str, Any]) -> bool:
-    """Update project configuration in database."""
-    if USE_SUPABASE:
-        db = get_database()
-        return await db.update_project_config(project_id, config_data)
-    else:
-        # File-based fallback
-        configs = load_project_configs()
-        configs[project_id] = config_data
-        return save_project_configs(configs)
+    """Update project configuration in Supabase only."""
+    db = get_database()
+    return await db.update_project_config(project_id, config_data)
 
 # Pydantic models for request/response
 class ChatRequest(BaseModel):
@@ -1273,7 +941,7 @@ async def chat_endpoint(project_id: str, request: ChatRequest):
         
         # Step 5: Save to chat history
         if conversation_id and user_id:
-            save_chat_message(project_id, conversation_id, user_id, query, final_response, agent_decision)
+            await save_chat_message(project_id, conversation_id, user_id, query, final_response, agent_decision)
         
         return ChatResponse(
             response=final_response,
@@ -1408,7 +1076,7 @@ async def get_project_chat_history(project_id: str, user_id: str = None, limit: 
         ChatHistoryResponse: Chat history data
     """
     try:
-        history_data = get_chat_history(project_id, user_id, limit)
+        history_data = await get_chat_history(project_id, user_id, limit)
         return ChatHistoryResponse(
             sessions=[ChatSession(**session) for session in history_data["sessions"]],
             total_sessions=history_data["total_sessions"]
