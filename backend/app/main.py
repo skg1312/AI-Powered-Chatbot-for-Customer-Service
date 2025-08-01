@@ -6,7 +6,7 @@ Now integrated with Supabase for scalable data storage.
 
 import json
 import os
-from fastapi import FastAPI, HTTPException, File, UploadFile, Depends, status
+from fastapi import FastAPI, HTTPException, File, UploadFile, Depends, status, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -29,7 +29,29 @@ JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
 # CORS Configuration
-ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', '*').split(',') if os.getenv('ALLOWED_ORIGINS') != '*' else ["*"]
+ALLOWED_ORIGINS_ENV = os.getenv('ALLOWED_ORIGINS', '')
+if ALLOWED_ORIGINS_ENV:
+    if ALLOWED_ORIGINS_ENV == '*':
+        ALLOWED_ORIGINS = ["*"]
+    else:
+        ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS_ENV.split(',')]
+else:
+    # Default allowed origins for production
+    ALLOWED_ORIGINS = [
+        "*",  # Allow all origins for public widget
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "https://*.vercel.app",
+        "https://ai-powered-chatbot-for-customer-service-mdmc7w1y8.vercel.app",
+        "https://medical-ai-chatbot.vercel.app",
+        "https://medical-ai-chatbot-frontend.vercel.app",
+        "null"  # Allow file:// protocol for local testing
+    ]
+
 print(f"🌐 CORS Origins: {ALLOWED_ORIGINS}")
 
 # Security
@@ -73,10 +95,37 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://.*\.vercel\.app",  # Allow all Vercel subdomains
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "cors_origins": ALLOWED_ORIGINS[:5] if len(ALLOWED_ORIGINS) > 5 else ALLOWED_ORIGINS,  # Show first 5 for security
+        "version": "1.0.0"
+    }
+
+@app.options("/{full_path:path}")
+async def preflight_handler(request: Request, full_path: str):
+    """Handle CORS preflight requests"""
+    response = Response()
+    origin = request.headers.get('origin')
+    
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    
+    return response
 
 # Initialize agents
 router_agent = RouterAgent()
