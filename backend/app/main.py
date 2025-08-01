@@ -1496,6 +1496,11 @@ async def upload_knowledge_base(project_id: str, files: List[UploadFile] = File(
                     "status": "skipped",
                     "reason": "Only text files supported"
                 })
+                uploaded_files.append({
+                    "filename": file.filename,
+                    "status": "skipped",
+                    "reason": "Only text files supported"
+                })
         
         return {
             "status": "completed",
