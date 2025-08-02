@@ -974,7 +974,7 @@ async def simple_chat_endpoint(request: ChatRequest):
     # Use the main chat endpoint with default project
     return await chat_endpoint("main", request)
 
-@app.post("/api/chat/widget-default", response_model=ChatResponse)
+@app.post("/api/widget/chat", response_model=ChatResponse)
 async def widget_chat_endpoint(request: ChatRequest):
     """
     Chat endpoint specifically for the embeddable widget.

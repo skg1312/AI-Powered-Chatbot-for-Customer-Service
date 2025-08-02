@@ -8,7 +8,9 @@
 
   // Widget configuration (can be overridden)
   const defaultConfig = {
-    apiUrl: window.location.hostname === 'https://medical-ai-chatbot-backend.onrender.com',
+    apiUrl: (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:') 
+      ? 'http://localhost:8003' 
+      : 'https://medical-ai-chatbot-backend.onrender.com',
     theme: 'blue',
     position: 'bottom-right',
     greeting: 'Hello! I\'m your Medical AI Assistant. How can I help you today?',
@@ -522,8 +524,8 @@
     render();
 
     try {
-      console.log('Widget: Sending request to:', `${config.apiUrl}/api/chat/widget-default`);
-      const response = await fetch(`${config.apiUrl}/api/chat/widget-default`, {
+      console.log('Widget: Sending request to:', `${config.apiUrl}/api/widget/chat`);
+      const response = await fetch(`${config.apiUrl}/api/widget/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
