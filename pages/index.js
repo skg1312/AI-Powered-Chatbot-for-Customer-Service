@@ -19,8 +19,8 @@ export default function Home() {
     totalUsers: 0,
     totalSessions: 0,
     knowledgeBaseFiles: 0,
-    curatedWebsites: 4,
-    activeAgents: 4
+    curatedWebsites: 0,
+    activeAgents: 0
   });
 
   const loadStats = async () => {
