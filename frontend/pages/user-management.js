@@ -90,6 +90,8 @@ export default function UserManagement() {
     
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://medical-ai-chatbot-backend.onrender.com';
+      console.log('Updating user:', selectedUser.user_id, 'with data:', editFormData);
+      
       const response = await fetch(`${API_URL}/api/users/${selectedUser.user_id}`, {
         method: 'PUT',
         headers: {
@@ -105,16 +107,27 @@ export default function UserManagement() {
         }),
       });
 
+      console.log('Update response status:', response.status);
+      console.log('Update response ok:', response.ok);
+
       if (response.ok) {
         const updatedUser = await response.json();
+        console.log('Updated user data:', updatedUser);
+        
         setUsers(users.map(user => 
           user.user_id === selectedUser.user_id ? updatedUser : user
         ));
         setShowEditModal(false);
         setSelectedUser(null);
+        alert('User updated successfully!');
+      } else {
+        const errorData = await response.json();
+        console.error('Update failed:', errorData);
+        alert(`Failed to update user: ${errorData.detail || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Failed to update user:', error);
+      alert(`Failed to update user: ${error.message}`);
     }
   };
 

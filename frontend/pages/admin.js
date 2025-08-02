@@ -19,7 +19,8 @@ export default function AdminPanel() {
   const [config, setConfig] = useState({
     botPersona: '',
     curatedSites: [],
-    knowledgeBaseFiles: []
+    knowledgeBaseFiles: [],
+    tavilyStatusCheck: true  // Add Tavily API status check toggle
   });
   const [newSite, setNewSite] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -63,7 +64,8 @@ export default function AdminPanel() {
         setConfig({
           botPersona: data.bot_persona || '',
           curatedSites: data.curated_sites || [],
-          knowledgeBaseFiles: data.knowledge_base_files || []
+          knowledgeBaseFiles: data.knowledge_base_files || [],
+          tavilyStatusCheck: data.tavily_status_check !== undefined ? data.tavily_status_check : true
         });
       }
     } catch (error) {
@@ -85,7 +87,8 @@ export default function AdminPanel() {
           project_id: 'main',
           bot_persona: config.botPersona,
           curated_sites: config.curatedSites,
-          knowledge_base_files: config.knowledgeBaseFiles
+          knowledge_base_files: config.knowledgeBaseFiles,
+          tavily_status_check: config.tavilyStatusCheck
         }),
       });
 
@@ -292,6 +295,51 @@ export default function AdminPanel() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* API Settings Section */}
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
+            <div className="flex items-center space-x-3 mb-6">
+              <Settings className="h-8 w-8 text-blue-600" />
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">API Settings</h3>
+                <p className="text-gray-600">Configure API usage and monitoring settings</p>
+              </div>
+            </div>
+            
+            <div className="space-y-6">
+              {/* Tavily API Status Check Toggle */}
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <div className="flex-1">
+                  <h4 className="text-lg font-medium text-gray-900">Tavily API Status Monitoring</h4>
+                  <p className="text-sm text-gray-600 mt-1">
+                    When enabled, the system checks Tavily API status every time you view the status page. 
+                    <span className="text-red-600 font-medium"> Note: Each check consumes 1 API credit.</span>
+                  </p>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Disable this to save API credits if you don't need real-time Tavily API status. 
+                    The Tavily service will still work for actual chat functionality.
+                  </p>
+                </div>
+                <div className="flex items-center ml-4">
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={config.tavilyStatusCheck}
+                      onChange={(e) => setConfig({
+                        ...config,
+                        tavilyStatusCheck: e.target.checked
+                      })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                    <span className="ml-3 text-sm font-medium text-gray-900">
+                      {config.tavilyStatusCheck ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </label>
+                </div>
+              </div>
             </div>
           </div>
 

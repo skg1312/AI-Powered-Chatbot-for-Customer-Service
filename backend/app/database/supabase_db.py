@@ -396,10 +396,29 @@ class SupabaseDB:
             existing = await self.get_project_config(project_id)
             
             if existing:
-                result = self.client.table('project_configs').update(config_record).eq('project_id', project_id).execute()
+                # For updates, try with tavily_status_check, if it fails, try without it
+                try:
+                    result = self.client.table('project_configs').update(config_record).eq('project_id', project_id).execute()
+                except Exception as e:
+                    if 'tavily_status_check' in str(e):
+                        # Column doesn't exist, remove it and try again
+                        logger.warning(f"tavily_status_check column doesn't exist yet, skipping this field")
+                        config_record_without_tavily = {k: v for k, v in config_record.items() if k != 'tavily_status_check'}
+                        result = self.client.table('project_configs').update(config_record_without_tavily).eq('project_id', project_id).execute()
+                    else:
+                        raise e
             else:
                 config_record["created_at"] = datetime.now(timezone.utc).isoformat()
-                result = self.client.table('project_configs').insert(config_record).execute()
+                try:
+                    result = self.client.table('project_configs').insert(config_record).execute()
+                except Exception as e:
+                    if 'tavily_status_check' in str(e):
+                        # Column doesn't exist, remove it and try again
+                        logger.warning(f"tavily_status_check column doesn't exist yet, skipping this field")
+                        config_record_without_tavily = {k: v for k, v in config_record.items() if k != 'tavily_status_check'}
+                        result = self.client.table('project_configs').insert(config_record_without_tavily).execute()
+                    else:
+                        raise e
             
             if result.data:
                 logger.info(f"✅ Project config updated: {project_id}")

@@ -39,7 +39,7 @@ export default function UserDashboard() {
   const loadUserSessions = async (userId) => {
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://medical-ai-chatbot-backend.onrender.com';
-      const response = await fetch(`${API_URL}/api/chat/history`);
+      const response = await fetch(`${API_URL}/api/projects/main/chat-history`);
       if (response.ok) {
         const data = await response.json();
         // Filter sessions for current user
@@ -47,6 +47,8 @@ export default function UserDashboard() {
           session.user_id === userId
         );
         setUserSessions(userSpecificSessions);
+      } else {
+        console.error('Failed to load sessions, status:', response.status);
       }
     } catch (error) {
       console.error('Failed to load user sessions:', error);
@@ -76,15 +78,33 @@ export default function UserDashboard() {
     if (confirm('Are you sure you want to delete this chat session?')) {
       try {
         const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://medical-ai-chatbot-backend.onrender.com';
+        console.log('Deleting session:', sessionId, 'using API URL:', API_URL);
+        
         const response = await fetch(`${API_URL}/api/chat/session/${sessionId}`, {
-          method: 'DELETE'
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          }
         });
+        
+        console.log('Delete response status:', response.status);
+        console.log('Delete response ok:', response.ok);
+        
         if (response.ok) {
+          const result = await response.json();
+          console.log('Delete result:', result);
+          
           setUserSessions(prev => prev.filter(s => s.session_id !== sessionId));
           setSelectedSession(null);
+          alert('Session deleted successfully!');
+        } else {
+          const errorText = await response.text();
+          console.error('Delete failed with status:', response.status, 'Error:', errorText);
+          alert(`Failed to delete session: ${response.status} - ${errorText}`);
         }
       } catch (error) {
         console.error('Failed to delete session:', error);
+        alert(`Error deleting session: ${error.message}`);
       }
     }
   };

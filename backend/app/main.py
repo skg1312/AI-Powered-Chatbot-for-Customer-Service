@@ -240,28 +240,61 @@ async def api_status(request: Request):
         }
         status["overall_status"] = "degraded"
     
-    # Check Tavily AI
+    # Check Tavily AI (only if enabled in project config)
     try:
-        from tavily import TavilyClient
-        tavily_client = TavilyClient(api_key=config.get_tavily_api_key())
-        # Simple test query
-        test_result = tavily_client.search("test", max_results=1)
+        # Get project configuration to check if Tavily status check is enabled
+        db = get_database()
+        config_result = await db.get_project_config("main")  # Using main project
+        tavily_enabled = True  # Default to enabled
         
-        status["services"]["tavily"] = {
-            "status": "operational",
-            "last_check": datetime.utcnow().isoformat()
-        }
+        # First try to get from database config
+        if config_result and config_result.get("success") and config_result.get("config"):
+            tavily_enabled = config_result["config"].get("tavily_status_check", True)
+        elif config_result and isinstance(config_result, dict):
+            # Direct config object from database
+            tavily_enabled = config_result.get("tavily_status_check", True)
+        
+        # If tavily_status_check is not in database, try file-based storage as fallback
+        if 'tavily_status_check' not in (config_result if config_result else {}):
+            try:
+                import json
+                settings_file = "tavily_settings.json"
+                if os.path.exists(settings_file):
+                    with open(settings_file, 'r') as f:
+                        settings = json.load(f)
+                        tavily_enabled = settings.get("tavily_status_check", True)
+            except Exception:
+                pass  # Use default if file reading fails
+        
+        if tavily_enabled:
+            from tavily import TavilyClient
+            tavily_client = TavilyClient(api_key=config.get_tavily_api_key())
+            # Simple test query
+            test_result = tavily_client.search("test", max_results=1)
+            
+            status["services"]["tavily"] = {
+                "status": "operational",
+                "last_check": datetime.utcnow().isoformat(),
+                "status_check_enabled": True
+            }
+        else:
+            status["services"]["tavily"] = {
+                "status": "skipped",
+                "message": "Status check disabled to save API credits",
+                "last_check": datetime.utcnow().isoformat(),
+                "status_check_enabled": False
+            }
     except Exception as e:
         status["services"]["tavily"] = {
             "status": "error",
             "error": str(e)[:100],
-            "last_check": datetime.utcnow().isoformat()
+            "last_check": datetime.utcnow().isoformat(),
+            "status_check_enabled": True
         }
         status["overall_status"] = "degraded"
     
     # Check Supabase Database
     try:
-        from app.database.supabase_db import get_database
         db = get_database()
         # Test with a simple connection check
         result = await db.get_all_users()
@@ -378,7 +411,8 @@ def get_default_config(project_id: str):
             "healthline.com",
             "medlineplus.gov"
         ],
-        "knowledge_base_files": []
+        "knowledge_base_files": [],
+        "tavily_status_check": True  # Default to enabled
     }
 
 
@@ -634,6 +668,7 @@ class ProjectConfig(BaseModel):
     bot_persona: str
     curated_sites: List[str]
     knowledge_base_files: List[str]
+    tavily_status_check: Optional[bool] = True  # Toggle for Tavily API status checks
     stats: Optional[Dict[str, Any]] = {
         "total_users": 0,
         "total_sessions": 0,
@@ -679,6 +714,14 @@ class UserRegistration(BaseModel):
     name: str
     email: str
     password: str
+    phone: Optional[str] = None
+    age: Optional[int] = None
+    medical_conditions: Optional[str] = None
+    emergency_contact: Optional[str] = None
+
+class UserUpdate(BaseModel):
+    name: str
+    email: str
     phone: Optional[str] = None
     age: Optional[int] = None
     medical_conditions: Optional[str] = None
@@ -1034,11 +1077,24 @@ async def update_project_config(project_id: str, config_data: ProjectConfig):
             "project_id": project_id,
             "bot_persona": config_data.bot_persona,
             "curated_sites": config_data.curated_sites,
-            "knowledge_base_files": config_data.knowledge_base_files
+            "knowledge_base_files": config_data.knowledge_base_files,
+            "tavily_status_check": config_data.tavily_status_check
         }
         
         # Update using database abstraction layer
         success = await update_project_config_db(project_id, config_dict)
+        
+        # Also update file-based storage for tavily_status_check as fallback
+        if "tavily_status_check" in config_dict:
+            try:
+                import json
+                settings_file = "tavily_settings.json"
+                settings = {"tavily_status_check": config_dict["tavily_status_check"]}
+                with open(settings_file, 'w') as f:
+                    json.dump(settings, f)
+                logger.info(f"Updated Tavily settings file: {config_dict['tavily_status_check']}")
+            except Exception as e:
+                logger.warning(f"Failed to update Tavily settings file: {str(e)}")
         
         if success:
             logger.info(f"Configuration saved for project {project_id}")
@@ -1060,6 +1116,21 @@ async def get_project_config(project_id: str):
     try:
         # Use database abstraction layer
         config = await get_project_config_db(project_id)
+        
+        # Add tavily_status_check from file-based storage if not in database
+        if isinstance(config, dict) and "tavily_status_check" not in config:
+            try:
+                import json
+                settings_file = "tavily_settings.json"
+                if os.path.exists(settings_file):
+                    with open(settings_file, 'r') as f:
+                        settings = json.load(f)
+                        config["tavily_status_check"] = settings.get("tavily_status_check", True)
+                else:
+                    config["tavily_status_check"] = True  # Default value
+            except Exception:
+                config["tavily_status_check"] = True  # Default value
+        
         return config
             
     except Exception as e:
@@ -1192,6 +1263,31 @@ async def delete_chat_session(project_id: str, session_id: str):
     except Exception as e:
         logger.error(f"Error deleting chat session: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to delete chat session")
+
+@app.get("/api/chat/session/{session_id}")
+async def get_session_by_id(session_id: str):
+    """
+    Get a specific chat session by ID (for playground continuation).
+    
+    Args:
+        session_id (str): Session identifier
+        
+    Returns:
+        dict: Chat session data
+    """
+    try:
+        # Use database to get session
+        session = await get_session_by_id_db(session_id)
+        if session:
+            return {"session": session}
+        else:
+            raise HTTPException(status_code=404, detail="Chat session not found")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting chat session: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get chat session")
 
 # User Management Endpoints
 @app.post("/api/users/register")
@@ -1412,7 +1508,7 @@ async def get_user(user_id: str):
         raise HTTPException(status_code=500, detail="Failed to get user")
 
 @app.put("/api/users/{user_id}")
-async def update_user(user_id: str, user_data: UserRegistration):
+async def update_user(user_id: str, user_data: UserUpdate):
     """
     Update a user profile.
     

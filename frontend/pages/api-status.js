@@ -6,7 +6,7 @@ export default function APIStatus() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://medical-ai-chatbot-backend.onrender.com';
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
   const fetchStatus = async () => {
     setLoading(true);
@@ -42,6 +42,8 @@ export default function APIStatus() {
         return <AlertCircle className="w-5 h-5 text-yellow-500" />;
       case 'error':
         return <XCircle className="w-5 h-5 text-red-500" />;
+      case 'skipped':
+        return <AlertCircle className="w-5 h-5 text-blue-500" />;
       default:
         return <AlertCircle className="w-5 h-5 text-gray-500" />;
     }
@@ -55,6 +57,8 @@ export default function APIStatus() {
         return 'border-yellow-200 bg-yellow-50';
       case 'error':
         return 'border-red-200 bg-red-50';
+      case 'skipped':
+        return 'border-blue-200 bg-blue-50';
       default:
         return 'border-gray-200 bg-gray-50';
     }
@@ -188,12 +192,36 @@ export default function APIStatus() {
                         <span className="ml-2 text-gray-600">{serviceData.database_type}</span>
                       </div>
                     )}
+                    {/* Special handling for Tavily status check toggle */}
+                    {serviceName === 'tavily' && serviceData.status_check_enabled !== undefined && (
+                      <div>
+                        <span className="font-medium text-gray-700">Status Monitoring:</span>
+                        <span className={`ml-2 px-2 py-1 rounded text-xs font-medium ${
+                          serviceData.status_check_enabled 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {serviceData.status_check_enabled ? 'Enabled' : 'Disabled (Saving Credits)'}
+                        </span>
+                      </div>
+                    )}
                     {serviceData.last_check && (
                       <div>
                         <span className="font-medium text-gray-700">Last Check:</span>
                         <span className="ml-2 text-gray-600">
                           {new Date(serviceData.last_check).toLocaleTimeString()}
                         </span>
+                      </div>
+                    )}
+                    {/* Special message for Tavily when skipped */}
+                    {serviceName === 'tavily' && serviceData.status === 'skipped' && serviceData.message && (
+                      <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <span className="font-medium text-yellow-700">Info:</span>
+                        <p className="text-yellow-600 text-xs mt-1">{serviceData.message}</p>
+                        <p className="text-yellow-600 text-xs mt-1">
+                          The Tavily service is still available for chat functionality. 
+                          This only affects status monitoring to save API credits.
+                        </p>
                       </div>
                     )}
                     {serviceData.error && (

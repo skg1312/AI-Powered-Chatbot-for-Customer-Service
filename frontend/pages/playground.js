@@ -50,12 +50,15 @@ export default function Playground() {
       setUserId(tempUserId);
     }
 
-    // Check for session continuation from URL params
-    const { session: sessionParam } = router.query;
+    // Check for session continuation from URL params or localStorage
+    const { session: sessionParam, continue: continueParam } = router.query;
     
     if (sessionParam) {
       // Load specific session by ID
       loadSessionById(sessionParam);
+    } else if (continueParam === 'true') {
+      // Load session from localStorage (continued from chat history)
+      loadContinuedSession();
     } else {
       // Create new session
       setConversationId('conversation_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now());
@@ -87,6 +90,39 @@ export default function Playground() {
       }
     } catch (error) {
       console.error('Failed to load session:', error);
+    }
+  };
+
+  const loadContinuedSession = () => {
+    try {
+      const sessionData = localStorage.getItem('continueSession');
+      if (sessionData) {
+        const { sessionId, userId: sessionUserId, messages: sessionMessages } = JSON.parse(sessionData);
+        
+        setConversationId(sessionId);
+        setIsContinuedSession(true);
+        
+        // Use the session's user ID if available
+        if (sessionUserId) {
+          setUserId(sessionUserId);
+        }
+        
+        // Convert previous messages to the format expected by the UI
+        if (sessionMessages && sessionMessages.length > 0) {
+          const formattedMessages = sessionMessages.map(msg => ({
+            role: msg.role,
+            content: msg.content,
+            timestamp: new Date(msg.timestamp),
+            agent: msg.agent_used
+          }));
+          setMessages(formattedMessages);
+        }
+        
+        // Clear the localStorage after loading
+        localStorage.removeItem('continueSession');
+      }
+    } catch (error) {
+      console.error('Failed to load continued session:', error);
     }
   };
 
