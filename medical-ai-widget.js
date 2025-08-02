@@ -8,7 +8,7 @@
 
   // Widget configuration (can be overridden)
   const defaultConfig = {
-    apiUrl: 'https://medical-ai-chatbot-backend.onrender.com',
+    apiUrl: window.location.hostname === 'https://medical-ai-chatbot-backend.onrender.com',
     theme: 'blue',
     position: 'bottom-right',
     greeting: 'Hello! I\'m your Medical AI Assistant. How can I help you today?',
@@ -37,6 +37,7 @@
     }
   ];
   let sessionId = 'widget_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+  let userId = 'anonymous'; // Use consistent anonymous user tracking
 
   // Create widget container
   const widgetContainer = document.createElement('div');
@@ -528,8 +529,8 @@
         body: JSON.stringify({
           message: message,
           conversation_id: sessionId,
-          user_id: 'widget_user_' + Date.now(),
-          context: { source: 'embed-widget' }
+          user_id: userId,
+          context: { source: 'embed-widget', widget_session: true }
         })
       });
 

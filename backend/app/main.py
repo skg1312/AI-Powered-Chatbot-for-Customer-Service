@@ -974,6 +974,48 @@ async def simple_chat_endpoint(request: ChatRequest):
     # Use the main chat endpoint with default project
     return await chat_endpoint("main", request)
 
+@app.post("/api/chat/widget-default", response_model=ChatResponse)
+async def widget_chat_endpoint(request: ChatRequest):
+    """
+    Chat endpoint specifically for the embeddable widget.
+    This endpoint properly tracks widget conversations in the admin panel.
+    
+    Args:
+        request (ChatRequest): Chat request with message
+        
+    Returns:
+        ChatResponse: Generated response with metadata
+    """
+    try:
+        logger.info(f"Widget chat request: {request.message[:100]}...")
+        
+        # Ensure widget conversations are properly tracked
+        if not request.conversation_id:
+            request.conversation_id = f"widget_{int(datetime.now().timestamp())}_{str(uuid.uuid4())[:8]}"
+        
+        # Mark as widget user for tracking
+        if not request.user_id or request.user_id.startswith('widget_user_'):
+            request.user_id = "anonymous"  # Use consistent anonymous tracking
+        
+        # Add widget context
+        if not request.context:
+            request.context = {}
+        request.context["source"] = "embed-widget"
+        request.context["widget_session"] = True
+        
+        logger.info(f"Widget: Using conversation_id: {request.conversation_id}")
+        logger.info(f"Widget: Using user_id: {request.user_id}")
+        
+        # Use the main chat endpoint with default project
+        response = await chat_endpoint("main", request)
+        
+        logger.info(f"Widget: Chat response generated successfully")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error in widget chat endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail="Widget chat error")
+
 @app.post("/api/projects/{project_id}/config")
 async def update_project_config(project_id: str, config_data: ProjectConfig):
     """
