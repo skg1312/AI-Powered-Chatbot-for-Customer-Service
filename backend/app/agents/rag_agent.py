@@ -142,7 +142,7 @@ class RAGAgent:
                     "values": embedding,
                     "metadata": {
                         **metadata,
-                        "text": text[:1000]  # Store first 1000 chars in metadata
+                        "text": text  # Store first 1000 chars in metadata
                     }
                 })
             
