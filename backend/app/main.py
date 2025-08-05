@@ -836,8 +836,13 @@ def generate_final_response(query: str, context: str, agent_used: str, project_i
 Context from {agent_used}:
 {context}
 
-Use this context to provide accurate and helpful responses while maintaining your defined personality and following your core rules."""
-
+IMPORTANT INSTRUCTIONS:
+- When the context contains policy documents, procedures, or structured information, preserve the original structure and present it clearly.
+- For policy questions, provide the complete policy information as it appears in the context.
+- If the context contains specific headings, bullet points, or numbered lists, maintain that formatting.
+- Only paraphrase or summarize when the user specifically asks for a summary.
+- Use this context to provide accurate and helpful responses while maintaining your defined personality."""
+        
         response = groq_client.chat.completions.create(
             model=config.GENERATION_MODEL,
             messages=[
